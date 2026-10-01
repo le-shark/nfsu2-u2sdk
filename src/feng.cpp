@@ -27,6 +27,20 @@ void SetColor(FEObject* o, uint32_t argb) { At<void(__cdecl*)(FEObject*, uint32_
 void ShowPackage(const char* pkg) { At<void(__cdecl*)(const char*, void*)>(0x555E80)(pkg, nullptr); }
 void RemovePackage(const char* pkg) { At<void(__cdecl*)(const char*)>(0x5379A0)(pkg); }
 
+namespace {
+void* CFEng() {
+  auto ui = Var<uint8_t*>(addr::pFEng);
+  return ui ? *reinterpret_cast<void**>(ui + 8) : nullptr;
+}
+}  // namespace
+
+void PushOverlayPackage(const char* pkg) {
+  if (void* f = CFEng()) At<void(__fastcall*)(void*, void*, const char*, int, unsigned)>(0x555860)(f, nullptr, pkg, 0, 0);
+}
+void PopOverlayPackage(FEPackage* p) {
+  if (void* f = CFEng()) At<void(__fastcall*)(void*, void*, FEPackage*)>(0x5362E0)(f, nullptr, p);
+}
+
 FEPackage* FirstActivePackage() {
   auto ui = Var<uint8_t*>(addr::pFEng);
   if (!ui) return nullptr;

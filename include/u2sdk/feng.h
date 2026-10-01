@@ -22,6 +22,10 @@ void GetCenter(FEObject* o, float* x, float* y);        // 0x51D620
 void SetColor(FEObject* o, uint32_t argb);              // 0x51D7F0
 void ShowPackage(const char* pkg);                      // AddFngToUIObject_1 0x555E80 (pkg, 0)
 void RemovePackage(const char* pkg);                    // RemoveFNGFromUIObject 0x5379A0
+// cFEng-level push/pop. Unlike ShowPackage these don't touch the UIData screen stack, so the
+// package gets no input focus (controlMask 0) and gameplay input/pause keep working.
+void PushOverlayPackage(const char* pkg);               // cFEng::PushPackage 0x555860(pkg, 0, mask 0)
+void PopOverlayPackage(FEPackage* p);                   // cFEng::PopPackage 0x5362E0(pkg)
 
 // Active package list: cFEng = *(pUIData+8); head at cFEng+0xE4, next at pkg+0x04.
 FEPackage* FirstActivePackage();
