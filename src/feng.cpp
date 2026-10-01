@@ -27,13 +27,6 @@ void SetColor(FEObject* o, uint32_t argb) { At<void(__cdecl*)(FEObject*, uint32_
 void ShowPackage(const char* pkg) { At<void(__cdecl*)(const char*, void*)>(0x555E80)(pkg, nullptr); }
 void RemovePackage(const char* pkg) { At<void(__cdecl*)(const char*)>(0x5379A0)(pkg); }
 
-void PushOverlayPackage(const char* pkg) {
-  void* ui = Var<void*>(addr::pFEng);
-  if (!ui) return;
-  At<void(__fastcall*)(void*, void*, int, const char*, const char*, unsigned, void*)>(0x555D00)(ui, nullptr, 0, pkg, nullptr, 0, nullptr);
-  At<void(__fastcall*)(void*, void*)>(0x52CDD0)(ui, nullptr);  // same follow-up as AddFngToUIObject_1
-}
-
 FEPackage* FirstActivePackage() {
   auto ui = Var<uint8_t*>(addr::pFEng);
   if (!ui) return nullptr;

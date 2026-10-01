@@ -22,10 +22,9 @@ void GetCenter(FEObject* o, float* x, float* y);        // 0x51D620
 void SetColor(FEObject* o, uint32_t argb);              // 0x51D7F0
 void ShowPackage(const char* pkg);                      // AddFngToUIObject_1 0x555E80 (pkg, 0)
 void RemovePackage(const char* pkg);                    // RemoveFNGFromUIObject 0x5379A0
-// Like ShowPackage, but with controlMask 0 so the package never takes gameplay/pause input.
-// UIData::AddFNGToUIObject 0x555D00(this, flags 0, pkg, parent 0, mask 0, data 0).
-// (Calling cFEng::PushPackage 0x555860 directly crashes.) Remove with RemovePackage.
-void PushOverlayPackage(const char* pkg);
+// NOTE (tested in-game): pushing packages via cFEng::PushPackage 0x555860 directly, or via
+// AddFNGToUIObject 0x555D00 with controlMask 0, crashes in the renderer (0x5C6223).
+// RemovePackage on ScreenPrintf.fng broke gameplay input. Use ShowPackage and never remove.
 
 // Active package list: cFEng = *(pUIData+8); head at cFEng+0xE4, next at pkg+0x04.
 FEPackage* FirstActivePackage();
