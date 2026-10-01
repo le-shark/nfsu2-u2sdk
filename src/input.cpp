@@ -18,12 +18,12 @@ float Stick(SHORT v, float dz) {
   return (f > 0 ? 1 : -1) * (a - dz) / (1 - dz);
 }
 
-bool WindowCenter(POINT* p) {
+bool WindowPoint(POINT* p, float fx, float fy) {
   HWND w = Window();
   RECT rc;
   if (!w || !GetClientRect(w, &rc)) return false;
-  p->x = (rc.right - rc.left) / 2;
-  p->y = (rc.bottom - rc.top) / 2;
+  p->x = static_cast<LONG>((rc.right - rc.left) * fx);
+  p->y = static_cast<LONG>((rc.bottom - rc.top) * fy);
   return ClientToScreen(w, p) != FALSE;
 }
 }  // namespace
@@ -41,7 +41,7 @@ void Input::Update() {
   if (focus) {
     wheel_ = Var<int>(addr::MouseWheel) / WHEEL_DELTA;
     POINT c, p;
-    if (capture_ && WindowCenter(&c) && GetCursorPos(&p)) {
+    if (capture_ && WindowPoint(&c, capX_, capY_) && GetCursorPos(&p)) {
       if (warm_) {
         mdx_ = static_cast<float>(p.x - c.x);
         mdy_ = static_cast<float>(p.y - c.y);

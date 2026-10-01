@@ -35,6 +35,8 @@ class Input {
 
   // Relative mouse: when captured, the cursor is re-centred in the game window every frame.
   void SetMouseCapture(bool on);
+  // Where the cursor is parked while captured, as a fraction of the client area (default centre).
+  void SetCapturePoint(float fx, float fy) { capX_ = fx; capY_ = fy; }
   float MouseDX() const { return mdx_; }
   float MouseDY() const { return mdy_; }
   int Wheel() const { return wheel_; }  // notches this frame (+ = away from user)
@@ -51,6 +53,7 @@ class Input {
   float mdx_ = 0, mdy_ = 0;
   int wheel_ = 0;
   unsigned long lastPadProbe_ = 0;
+  float capX_ = 0.5f, capY_ = 0.5f;
 };
 
 }  // namespace u2
