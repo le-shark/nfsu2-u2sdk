@@ -39,6 +39,25 @@ bool PlayerCarPosition(Vec3* out) {
   return true;
 }
 
+int RacerCars(RacerCar* out, int max) {
+  auto w = Var<uint8_t*>(addr::pWorld);
+  if (!w) return 0;
+  int total = *reinterpret_cast<int*>(w + 0x10), players = *reinterpret_cast<int*>(w + 0x14);
+  int n = *reinterpret_cast<int*>(w + 0x18);
+  if (n > total) n = total;
+  if (n > kMaxCars) n = kMaxCars;
+  auto cars = reinterpret_cast<uint8_t**>(w + 0x1C);
+  int k = 0;
+  for (int i = 0; i < n && k < max; ++i) {
+    uint8_t* c = cars[i];
+    if (!c) continue;
+    bool player = i < players;
+    if (!player && *reinterpret_cast<int*>(c + 0x28) == 0) continue;
+    out[k++] = {c, player};
+  }
+  return k;
+}
+
 void CreateLookAtMatrix(bMatrix4* out, const Vec3& from, const Vec3& to, const Vec3& up) {
   alignas(16) bVector4 f{from.x, from.y, from.z, 1}, t{to.x, to.y, to.z, 1}, u{up.x, up.y, up.z, 0};
   using Fn = void(__cdecl*)(bMatrix4*, bVector4*, bVector4*, bVector4*);

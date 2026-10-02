@@ -27,7 +27,8 @@ constexpr uintptr_t ScreenHeight = 0x870984;
 constexpr uintptr_t DrawHud = 0x7F91C4;              // int, gates *all* FEng rendering
 constexpr uintptr_t pFEng = 0x8384C4;                // cFEng*/UIData* instance
 constexpr uintptr_t MouseWheel = 0x8763EC;           // int DIMOUSESTATE.lZ of this frame
-constexpr uintptr_t PlayerCarState = 0x89CCF8;       // CarState*: +0x50 position
+constexpr uintptr_t PlayerCarState = 0x89CCF8;       // Car* slot table [22]; [0] = player. Car+0x50 position
+constexpr uintptr_t pWorld = 0x890080;               // World*, null outside the world (see RacerCars)
 constexpr uintptr_t g_MotionBlurEnable = 0x870CDC;   // int
 constexpr uintptr_t g_DepthOfFieldEnable = 0x870CF0; // int
 constexpr uintptr_t g_FSAALevel = 0x870D08;          // int
@@ -85,6 +86,21 @@ IDirect3DDevice9* Device();
 CameraParams* PlayerCamera();
 eView* GetView(int id);
 bool PlayerCarPosition(Vec3* out);     // false if no car
+
+// Player and AI racer cars. World (0x890080) +0x10 car count, +0x14 player count, +0x18 player +
+// racer count, +0x1C Car*[] sorted players, racers, traffic (World::RebuildCarArray 0x5F0D20; the
+// game walks it at 0x5F14FC; NFSU2FastTravel FromGame.h). Cars live for the whole race/free roam.
+// Car: +0x28 movement mode (0 = none: parked/inactive), +0x50 position, +0x90 orientation rows.
+struct RacerCar {
+  uint8_t* car;
+  bool isPlayer;
+};
+constexpr int kMaxCars = 22;           // slot tables at 0x89CCF8.. are 0x58 bytes apart
+int RacerCars(RacerCar* out, int max); // active ones only (the player is always included)
+inline Vec3 CarPosition(const uint8_t* car) {
+  auto p = reinterpret_cast<const float*>(car + 0x50);
+  return {p[0], p[1], p[2]};
+}
 
 template <typename T>
 inline T& Var(uintptr_t a) { return *reinterpret_cast<T*>(a); }
