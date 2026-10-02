@@ -10,6 +10,7 @@ namespace u2::hook {
 
 bool Init();
 bool Create(uintptr_t target, void* detour, void** original, const char* name);
+bool Enable(uintptr_t target);
 bool EnableAll();
 void DisableAll();
 

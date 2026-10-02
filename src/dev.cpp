@@ -3,22 +3,16 @@
 #include <d3d9.h>
 #include <windows.h>
 
-#include <fstream>
-#include <map>
-#include <sstream>
 #include <vector>
 
 #include "u2sdk/log.h"
+#include "u2sdk/u2math.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 namespace u2::dev {
 namespace {
-std::map<std::string, Handler>& Handlers() {
-  static std::map<std::string, Handler> h;
-  return h;
-}
 std::string g_shotPath;
 int g_shotScale = 1;
 
@@ -60,46 +54,11 @@ void Shot(IDirect3DDevice9* dev) {
 
 void RequestShot(const std::string& path, int scale) {
   g_shotPath = path;
-  g_shotScale = scale < 1 ? 1 : (scale > 4 ? 4 : scale);
+  g_shotScale = ClampInt(scale, 1, 4);
 }
-
-void Register(const std::string& command, Handler h) { Handlers()[command] = std::move(h); }
 
 bool SavePng(const std::string& path, int w, int h, const unsigned char* rgb) {
   return stbi_write_png(path.c_str(), w, h, 3, rgb, w * 3) != 0;
-}
-
-void Poll() {
-  static std::string file = log::ModuleDir() + log::ModuleName() + ".cmd";
-  if (GetFileAttributesA(file.c_str()) == INVALID_FILE_ATTRIBUTES) return;
-  std::vector<std::string> lines;
-  {
-    std::ifstream in(file);
-    for (std::string l; std::getline(in, l);)
-      if (!l.empty()) lines.push_back(l);
-  }
-  DeleteFileA(file.c_str());
-  for (auto& l : lines) {
-    std::istringstream ss(l);
-    std::string cmd, args;
-    ss >> cmd;
-    std::getline(ss, args);
-    if (!args.empty() && args[0] == ' ') args.erase(0, 1);
-    if (cmd == "shot") {
-      // "shot <scale> <path with spaces>"
-      std::istringstream as(args);
-      as >> g_shotScale;
-      std::getline(as, g_shotPath);
-      if (!g_shotPath.empty() && g_shotPath[0] == ' ') g_shotPath.erase(0, 1);
-      if (g_shotScale < 1 || g_shotScale > 4) g_shotScale = 1;
-    } else if (cmd == "log") {
-      U2LOG("dev: --- %s ---", args.c_str());
-    } else if (auto it = Handlers().find(cmd); it != Handlers().end()) {
-      it->second(args);
-    } else {
-      U2LOG("dev: unknown command '%s'", cmd.c_str());
-    }
-  }
 }
 
 void OnEndScene(IDirect3DDevice9* dev) {

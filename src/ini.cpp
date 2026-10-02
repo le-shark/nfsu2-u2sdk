@@ -10,7 +10,6 @@
 namespace u2 {
 
 Ini::Ini() : path_(log::ModuleDir() + log::ModuleName() + ".ini") {}
-Ini::Ini(std::string path) : path_(std::move(path)) {}
 
 std::string Ini::GetString(const char* section, const char* key, const char* def) const {
   char buf[512] = {};

@@ -74,25 +74,6 @@ void Input::Update() {
   }
 }
 
-bool Input::KeyRepeat(int vk, float dt, float delay, float rate) {
-  if (!KeyDown(vk)) { held_[vk] = 0; return false; }
-  if (KeyPressed(vk)) { held_[vk] = 0; nextRep_[vk] = delay; return true; }
-  held_[vk] += dt;
-  if (held_[vk] >= nextRep_[vk]) { nextRep_[vk] += rate; return true; }
-  return false;
-}
-
-bool Input::PadRepeat(uint16_t b, float dt, float delay, float rate) {
-  int i = 0;
-  while (i < 16 && !((1u << i) & b)) ++i;
-  if (i == 16) return false;
-  if (!PadDown(b)) { padHeld_[i] = 0; return false; }
-  if (PadPressed(b)) { padHeld_[i] = 0; padNext_[i] = delay; return true; }
-  padHeld_[i] += dt;
-  if (padHeld_[i] >= padNext_[i]) { padNext_[i] += rate; return true; }
-  return false;
-}
-
 void Input::SetMouseCapture(bool on) {
   capture_ = on;
   warm_ = false;

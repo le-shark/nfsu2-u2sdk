@@ -6,7 +6,6 @@ namespace u2 {
 class Ini {
  public:
   Ini();                                   // <module dir>\<module name>.ini
-  explicit Ini(std::string path);
   int GetInt(const char* section, const char* key, int def) const;
   float GetFloat(const char* section, const char* key, float def) const;
   bool GetBool(const char* section, const char* key, bool def) const { return GetInt(section, key, def) != 0; }

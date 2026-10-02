@@ -25,6 +25,12 @@ bool Create(uintptr_t target, void* detour, void** original, const char* name) {
   return true;
 }
 
+bool Enable(uintptr_t target) {
+  MH_STATUS s = MH_EnableHook(reinterpret_cast<void*>(target));
+  if (s != MH_OK) U2LOG("MH_EnableHook @ %08X failed: %s", static_cast<unsigned>(target), MH_StatusToString(s));
+  return s == MH_OK;
+}
+
 bool EnableAll() {
   MH_STATUS s = MH_EnableHook(MH_ALL_HOOKS);
   if (s != MH_OK) U2LOG("MH_EnableHook failed: %s", MH_StatusToString(s));

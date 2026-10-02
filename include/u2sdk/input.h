@@ -25,13 +25,10 @@ class Input {
 
   bool KeyDown(int vk) const { return vk > 0 && vk < 256 && cur_[vk]; }
   bool KeyPressed(int vk) const { return vk > 0 && vk < 256 && cur_[vk] && !prev_[vk]; }
-  // Auto-repeating press: true on press, then every `rate` s after `delay` s held.
-  bool KeyRepeat(int vk, float dt, float delay = 0.35f, float rate = 0.06f);
 
   const PadState& Pad() const { return pad_; }
   bool PadDown(uint16_t b) const { return (pad_.buttons & b) != 0; }
   bool PadPressed(uint16_t b) const { return (pad_.buttons & b) && !(prevButtons_ & b); }
-  bool PadRepeat(uint16_t b, float dt, float delay = 0.35f, float rate = 0.08f);
 
   // Relative mouse: when captured, the cursor is re-centred in the game window every frame.
   void SetMouseCapture(bool on);
@@ -45,10 +42,8 @@ class Input {
 
  private:
   bool cur_[256] = {}, prev_[256] = {};
-  float held_[256] = {}, nextRep_[256] = {};
   PadState pad_;
   uint16_t prevButtons_ = 0;
-  float padHeld_[16] = {}, padNext_[16] = {};
   bool capture_ = false, warm_ = false;
   float mdx_ = 0, mdy_ = 0;
   int wheel_ = 0;

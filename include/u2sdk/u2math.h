@@ -134,4 +134,6 @@ inline Mat4 AdjustProj(const Mat4& proj, const ProjAdjust& a) {
 }
 
 inline float Clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+inline int ClampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+inline int Wrap(int v, int n) { return (v % n + n) % n; }  // v mod n in 0..n-1
 }  // namespace u2

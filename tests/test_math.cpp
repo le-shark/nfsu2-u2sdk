@@ -70,8 +70,7 @@ TEST(LensShearKeepsFocusPlaneFixed) {
   a.focusDist = 12;
   Mat4 v2 = AdjustView(view, a), p2 = AdjustProj(proj, a);
   // A world point that lands exactly on the focus plane (view z = 12).
-  Mat4 inv = Mat4::Identity();  // build world point from a view-space point by inverting `view`
-  // view = R * T; for the test, solve numerically: pick view-space point, map back.
+  // Map a view-space point back to world space (view is an orthonormal rotation + translation).
   float vx = 1.3f, vy = -0.7f, vz = 12;
   // inverse of orthonormal rotation + translation
   float tx = vx - view.m[3][0], ty = vy - view.m[3][1], tz = vz - view.m[3][2];
@@ -90,7 +89,6 @@ TEST(LensShearKeepsFocusPlaneFixed) {
   Ndc(nearPt, view, proj, &x0, &y0);
   Ndc(nearPt, v2, p2, &x1, &y1);
   CHECK(std::fabs(x1 - x0) > 1e-3f || std::fabs(y1 - y0) > 1e-3f);
-  (void)inv;
 }
 
 TEST(JitterShiftsNdc) {
@@ -135,4 +133,20 @@ TEST(TilesCoverTheImage) {
       CHECK_NEAR(x, -1, 1e-4);
       CHECK_NEAR(y, 1, 1e-4);
     }
+}
+
+TEST(MulMatchesTransformChain) {
+  Mat4 a = SomeView(), b = Perspective(60, 0.75f, 1, 1000);
+  Vec4 v{1.5f, -2, 7, 1};
+  Vec4 p = Transform(Transform(v, a), b), q = Transform(v, Mul(a, b));
+  CHECK_NEAR(p.x, q.x, 1e-3);
+  CHECK_NEAR(p.y, q.y, 1e-3);
+  CHECK_NEAR(p.z, q.z, 1e-3);
+  CHECK_NEAR(p.w, q.w, 1e-3);
+}
+
+TEST(IntHelpers) {
+  CHECK(u2::Wrap(-1, 4) == 3 && u2::Wrap(4, 4) == 0 && u2::Wrap(9, 4) == 1);
+  CHECK(u2::ClampInt(-3, 0, 5) == 0 && u2::ClampInt(7, 0, 5) == 5 && u2::ClampInt(2, 0, 5) == 2);
+  CHECK(u2::Length(u2::Normalize(Vec3{0, 0, 0})) == 0);
 }

@@ -9,23 +9,14 @@ Fn At(uintptr_t a) { return reinterpret_cast<Fn>(a); }
 }  // namespace
 
 uint32_t HashUpper(const char* s) { return At<uint32_t(__cdecl*)(const char*)>(0x505450)(s); }
-uint32_t StringHash(const char* s) { return At<uint32_t(__cdecl*)(const char*)>(0x43DB50)(s); }
 
 FEPackage* FindPackage(const char* pkg) { return At<FEPackage*(__cdecl*)(const char*)>(0x52CEF0)(pkg); }
 FEObject* FindObject(const char* pkg, uint32_t h) { return At<FEObject*(__cdecl*)(const char*, uint32_t)>(0x5379C0)(pkg, h); }
-FEObject* FindString(const char* pkg, uint32_t h) { return At<FEObject*(__cdecl*)(const char*, uint32_t)>(0x537A10)(pkg, h); }
-void SetVisible(FEObject* o) { At<void(__cdecl*)(FEObject*)>(0x50CA50)(o); }
 void SetInvisible(FEObject* o) { At<void(__cdecl*)(FEObject*)>(0x50CA00)(o); }
 
 void Print(const char* pkg, uint32_t hash, const char* text) {
   At<void(__cdecl*)(const char*, uint32_t, const char*, ...)>(0x537B80)(pkg, hash, "%s", text);
 }
-
-void SetCenter(FEObject* o, float x, float y) { At<void(__cdecl*)(FEObject*, float, float)>(0x51D4D0)(o, x, y); }
-void GetCenter(FEObject* o, float* x, float* y) { At<void(__cdecl*)(FEObject*, float*, float*)>(0x51D620)(o, x, y); }
-void SetColor(FEObject* o, uint32_t argb) { At<void(__cdecl*)(FEObject*, uint32_t)>(0x51D7F0)(o, argb); }
-void ShowPackage(const char* pkg) { At<void(__cdecl*)(const char*, void*)>(0x555E80)(pkg, nullptr); }
-void RemovePackage(const char* pkg) { At<void(__cdecl*)(const char*)>(0x5379A0)(pkg); }
 
 FEPackage* FirstActivePackage() {
   auto ui = Var<uint8_t*>(addr::pFEng);
