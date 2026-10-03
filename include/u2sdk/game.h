@@ -34,6 +34,11 @@ constexpr uintptr_t g_MotionBlurEnable = 0x870CDC;   // int
 constexpr uintptr_t g_DepthOfFieldEnable = 0x870CF0; // int
 constexpr uintptr_t CameraStopUpdating = 0x828640;   // int
 constexpr uintptr_t PlayerCamera = 0x8760E0;         // Camera (eView 1 and 4)
+constexpr uintptr_t FrameLimit = 0x865558;           // float s: busy-wait limit and lower dt clamp in 0x57EAD0
+                                                     // (0x57EB0A); WSF FPSLimit writes 1/refresh. dt = ticks/1800,
+                                                     // so never below 1/1800 (fdiv [0x865198] at 0x44345F)
+constexpr uintptr_t MirrorOverride = 0x8707E4;       // int: 0x5C21E0 uses it instead of 0x8707DC when non-zero;
+                                                     // 1 = rear-view mirror view 3 off. No game code writes it
 // --- functions
 constexpr uintptr_t RenderFrame = 0x5D2850;             // cdecl(), called from GameLoop 0x5814D6
 constexpr uintptr_t Camera_SetCameraMatrix = 0x447280;  // thiscall(Camera*, bMatrix4*, float), ret 8
@@ -42,6 +47,8 @@ constexpr uintptr_t eCreateLookAtMatrix = 0x5BA9A0;     // cdecl(bMatrix4*, bVec
 constexpr uintptr_t eViewPlatInfo_Update = 0x5C7EC0;    // builds view/proj for a view
 constexpr uintptr_t cFEng_Render = 0x536520;            // thiscall(cFEng*)
 constexpr uintptr_t GameResetDevice = 0x5D1C40;         // cdecl(); WidescreenFix also hooks it
+constexpr uintptr_t Render3D = 0x5CAAD0;                // cdecl(); only caller 0x5D2B55. Ends with RT0 = backbuffer,
+                                                        // flushed, all game post FX done, no FE yet (0x5CBA1C..)
 }  // namespace addr
 
 // bVector3/bVector4 are 16-byte aligned 4-float vectors in the game.
