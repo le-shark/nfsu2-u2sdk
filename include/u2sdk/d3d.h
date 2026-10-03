@@ -6,6 +6,7 @@ struct IDirect3DDevice9;
 namespace u2::d3d {
 
 namespace vt {
+constexpr int Present = 17;
 constexpr int EndScene = 42;
 }
 
