@@ -37,6 +37,20 @@ constexpr uintptr_t PlayerCamera = 0x8760E0;         // Camera (eView 1 and 4)
 constexpr uintptr_t FrameLimit = 0x865558;           // float s: busy-wait limit and lower dt clamp in 0x57EAD0
                                                      // (0x57EB0A); WSF FPSLimit writes 1/refresh. dt = ticks/1800,
                                                      // so never below 1/1800 (fdiv [0x865198] at 0x44345F)
+// RT[0] of the RT table 0x86E768 (eRenderTarget, stride 0x1C; view 1): +8 surface, +0xC depth,
+// +0x14 width, +0x18 height. Rewritten from the screen size every frame by 0x5C21E0 (0x5C2341).
+constexpr uintptr_t RT0Surface = 0x86E770;
+constexpr uintptr_t RT0Depth = 0x86E774;
+constexpr uintptr_t RT0Width = 0x86E77C;
+constexpr uintptr_t RT0Height = 0x86E780;
+constexpr uintptr_t BackBufferSurface = 0x870850;    // GetBackBuffer(0,0) (0x5BA785); post FX use it directly
+constexpr uintptr_t AutoDepthSurface = 0x870854;     // GetDepthStencilSurface (0x5BA7A7)
+constexpr uintptr_t LightStreaksEnable = 0x870CE0;   // int g_LightStreaksEnable; with 0x870CE4 gates the
+                                                     // screen-size glow/streak pass 0x5CBB00 (0x5CB565/0x5CB577)
+                                                     // and overbright 0x8707CE (0x5CB768)
+constexpr uintptr_t HorizonFogEnable = 0x870D0C;     // int g_HorizonFogEnable; 0x8707CF read per frame (0x5CB79B)
+constexpr uintptr_t RainEnable = 0x870D10;           // int g_RainEnable; rain splatter 0x5C7AB0 gate (0x5CB7E6).
+                                                     // Only ever turn it off: it also gates RT creation (0x5BB875)
 constexpr uintptr_t MirrorOverride = 0x8707E4;       // int: 0x5C21E0 uses it instead of 0x8707DC when non-zero;
                                                      // 1 = rear-view mirror view 3 off. No game code writes it
 // --- functions
