@@ -51,6 +51,15 @@ constexpr uintptr_t LightStreaksEnable = 0x870CE0;   // int g_LightStreaksEnable
 constexpr uintptr_t HorizonFogEnable = 0x870D0C;     // int g_HorizonFogEnable; 0x8707CF read per frame (0x5CB79B)
 constexpr uintptr_t RainEnable = 0x870D10;           // int g_RainEnable; rain splatter 0x5C7AB0 gate (0x5CB7E6).
                                                      // Only ever turn it off: it also gates RT creation (0x5BB875)
+// Light streak / overbright chain (verified-in-binary.md "Light streaks, glow and overbright chain"):
+constexpr uintptr_t StreakTexture = 0x86F2E4;        // IDirect3DTexture9*, W x H feedback buffer (0x5BBA18)
+constexpr uintptr_t StreakSurface = 0x86FF70;        // its level 0 (0x5BBA31); bound by the streak pass 0x5CBB00
+constexpr uintptr_t FullTexture0 = 0x86EB88;         // full-size ping-pong textures [0], [1] (0x5BB90A), used by
+constexpr uintptr_t FullTexture1 = 0x86EB8C;         // bleach (0x5C6AA4) and the overbright composite (0x5CCBFA),
+constexpr uintptr_t FullSurface0 = 0x86EB0C;         // which copy them back over [0x870850]; surfaces [0], [1]
+constexpr uintptr_t FullSurface1 = 0x86EB10;
+constexpr uintptr_t FsaaLevel = 0x870D08;            // int g_FSAALevel; the streak pass uses the MSAA RT when > 0
+                                                     // (0x5CBB1C, 0x5CBB96, 0x5CBCAC, 0x5C6C0F)
 constexpr uintptr_t MirrorOverride = 0x8707E4;       // int: 0x5C21E0 uses it instead of 0x8707DC when non-zero;
                                                      // 1 = rear-view mirror view 3 off. No game code writes it
 // --- functions
