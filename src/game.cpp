@@ -70,6 +70,50 @@ int RacerCars(RacerCar* out, int max) {
   return k;
 }
 
+int ActiveCars(uint8_t** out, int max) {
+  WorldCars w;
+  if (!GetWorldCars(&w)) return 0;
+  int k = 0;
+  for (int i = 0; i < w.total && k < max; ++i) {
+    uint8_t* c = w.cars[i];
+    if (c && (i < w.players || Field(c, 0x28) != 0)) out[k++] = c;
+  }
+  return k;
+}
+
+// The game's own stepped segment test, copied from 0x446970 (a path-blocking check):
+//   0x4469DE  ctor 0x5E0B40 on a 0x314-byte stack query object (thiscall, no args)
+//   per step: 0x446B15  0x5E6FA0(obj, &mid, |b-a|*0.5 + 0.5, 0)   fill polygon cache, ret 0xC
+//             0x446B31  0x5D39F0(obj, 1, 1, &a, &b, 0.5f, 1.0f)   nearest hit, ret 0x18
+//   0x446B5F / 0x446B8A  dtor 0x5E0BF0 on both exits
+// 0x5D39F0 mode 1 on a hit moves b to a + normalize(b - a) * (hitDist - margin); it does not fill
+// the cache itself. Steps are 30 m, the game's own chunk for long segments (0x5E7ED0, constant
+// 0x7A4644), which also keeps a fill under the cache's 160-polygon cap (cmp 0xA0 at 0x5E1044).
+// CubicCameraMover::Update uses the same test for camera wall push-back (0x4536C7).
+bool WorldRayHit(const Vec3& from, const Vec3& dir, float maxLen, float* dist) {
+  if (!Var<uint8_t*>(addr::pWorld)) return false;
+  using CtorFn = void*(__fastcall*)(void*, void*);
+  using FillFn = void(__fastcall*)(void*, void*, const bVector4*, float, int);
+  using SegFn = bool(__fastcall*)(void*, void*, int, int, const bVector4*, bVector4*, float, float);
+  constexpr float kStep = 30, kMargin = 0.5f;
+  alignas(16) uint8_t obj[0x320];
+  reinterpret_cast<CtorFn>(0x5E0B40)(obj, nullptr);
+  bool hit = false;
+  for (float s = 0; s < maxLen && !hit; s += kStep) {
+    float e = s + kStep < maxLen ? s + kStep : maxLen;
+    Vec3 p0 = from + dir * s, p1 = from + dir * e, m = (p0 + p1) * 0.5f;
+    alignas(16) bVector4 a{p0.x, p0.y, p0.z, 1}, b{p1.x, p1.y, p1.z, 1}, mid{m.x, m.y, m.z, 1};
+    reinterpret_cast<FillFn>(0x5E6FA0)(obj, nullptr, &mid, (e - s) * 0.5f + 0.5f, 0);
+    if (reinterpret_cast<SegFn>(0x5D39F0)(obj, nullptr, 1, 1, &a, &b, kMargin, 1.0f)) {
+      *dist = s + Dot(Vec3{b.x, b.y, b.z} - p0, dir) + kMargin;
+      hit = true;
+    }
+  }
+  using DtorFn = void(__fastcall*)(void*, void*);
+  reinterpret_cast<DtorFn>(0x5E0BF0)(obj, nullptr);
+  return hit;
+}
+
 void LogCars() {
   WorldCars w;
   if (!GetWorldCars(&w)) return;

@@ -100,6 +100,13 @@ struct RacerCar {
 constexpr int kMaxCars = 22;           // size of the Car* slot table at 0x89CCF8
 int RacerCars(RacerCar* out, int max); // active ones only (the player is always included)
 void LogCars();                        // whole World car array, for diagnostics
+// Every car in the World array that is in play (movement mode != 0), player included; traffic too.
+int ActiveCars(uint8_t** out, int max);
+
+// Nearest hit of the ray from + dir * t (dir unit length, t <= maxLen) on the static world's
+// collision polygons (track, walls, invisible barriers; not cars). Only sections whose collision
+// pack is streamed in are seen. Main thread only. See game.cpp for the engine calls.
+bool WorldRayHit(const Vec3& from, const Vec3& dir, float maxLen, float* dist);
 uint8_t* PlayerCar();                  // null if there is none
 inline Vec3 CarPosition(const uint8_t* car) {
   auto p = reinterpret_cast<const float*>(car + 0x50);
