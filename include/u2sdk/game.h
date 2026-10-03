@@ -49,6 +49,7 @@ constexpr uintptr_t LightStreaksEnable = 0x870CE0;   // int g_LightStreaksEnable
                                                      // screen-size glow/streak pass 0x5CBB00 (0x5CB565/0x5CB577)
                                                      // and overbright 0x8707CE (0x5CB768)
 constexpr uintptr_t HorizonFogEnable = 0x870D0C;     // int g_HorizonFogEnable; 0x8707CF read per frame (0x5CB79B)
+constexpr uintptr_t BleachEnable = 0x870D00;         // int g_BleachByPassEnable (Enhanced Contrast)
 constexpr uintptr_t RainEnable = 0x870D10;           // int g_RainEnable; rain splatter 0x5C7AB0 gate (0x5CB7E6).
                                                      // Only ever turn it off: it also gates RT creation (0x5BB875)
 // Light streak / overbright chain (verified-in-binary.md "Light streaks, glow and overbright chain"):
