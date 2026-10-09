@@ -18,6 +18,9 @@ bool HookDeviceMethod(int index, void* detour, void** original, const char* name
 // remove this hook at runtime, or WSF's jump would be overwritten.
 using ResetListener = void (*)();
 void AddResetListener(ResetListener fn);
+// Called right after the game's handler returns, with its result (the Reset HRESULT; 0 = the device is back).
+using PostResetListener = void (*)(int hr);
+void AddPostResetListener(PostResetListener fn);
 bool InstallResetHook();   // call once at init (hooks 0x5D1C40)
 
 }  // namespace u2::d3d

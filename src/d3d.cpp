@@ -11,12 +11,17 @@
 namespace u2::d3d {
 namespace {
 std::vector<ResetListener> g_listeners;
-using ResetHandlerFn = void(__cdecl*)();
+std::vector<PostResetListener> g_postListeners;
+// int __cdecl(void): returns the last IDirect3DDevice9::Reset HRESULT in eax (0x5D1D91 / 0x5D1E11;
+// docs/research/2026-10-09-daylight-evidence/route-b-effects.md section 4).
+using ResetHandlerFn = int(__cdecl*)();
 ResetHandlerFn g_origReset = nullptr;
 
-void __cdecl ResetHandlerDetour() {
+int __cdecl ResetHandlerDetour() {
   for (auto fn : g_listeners) fn();
-  g_origReset();
+  int hr = g_origReset();
+  for (auto fn : g_postListeners) fn(hr);
+  return hr;
 }
 }  // namespace
 
@@ -29,6 +34,7 @@ bool HookDeviceMethod(int index, void* detour, void** original, const char* name
 }
 
 void AddResetListener(ResetListener fn) { g_listeners.push_back(fn); }
+void AddPostResetListener(PostResetListener fn) { g_postListeners.push_back(fn); }
 
 bool InstallResetHook() {
   // The game's "device needs reset" handler, called from the frame function when
