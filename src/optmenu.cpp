@@ -66,9 +66,28 @@ struct Row {
 };
 std::vector<Row> g_rows;
 int g_pendingActivate = -1;
-int g_releasePauseBlockIn = 0;  // frames until the pause-key block is restored after closing
+// The pause-key block byte is one game byte, but every ASI has its own copy of this module (photo mode, the daylight
+// tuner). Its saved value, the pending restore and the count of open menus are therefore kept per process in a small
+// named shared block, so one ASI's delayed restore never undoes another's open menu (review 2026-10-09).
+struct SharedPause {
+  volatile LONG openMenus;
+  volatile LONG releaseIn;  // frames until the block byte is restored; every ASI's Tick counts it down
+  uint8_t saved;
+};
+SharedPause* g_pause = nullptr;
+SharedPause& Pause() {
+  if (!g_pause) {
+    char name[64];
+    std::snprintf(name, sizeof name, "Local\\NFSU2_u2sdk_optmenu_%lu", GetCurrentProcessId());
+    HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(SharedPause), name);
+    if (h) g_pause = static_cast<SharedPause*>(MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedPause)));
+    static SharedPause local{};  // no mapping: this ASI alone
+    if (!g_pause) g_pause = &local;
+  }
+  return *g_pause;
+}
 int g_inputLogIn = 0;           // verbose: frames until the input state is logged
-uint8_t g_savedPauseBlock = 0, g_savedKeyboardMap = 0;
+uint8_t g_savedKeyboardMap = 0;
 bool g_joyHandlersWereOn = false;
 bool g_pendingBack = false;
 bool g_hidden = false;
@@ -413,8 +432,10 @@ bool Open() {
   g_savedKeyboardMap = Var<uint8_t>(kMenuKeyboardMap);
   SetMenuKeyboardMap(1);
   // While a restore from the last close is pending, the block byte still holds our 1.
-  if (g_releasePauseBlockIn == 0) g_savedPauseBlock = Var<uint8_t>(kPauseKeyBlock);
-  g_releasePauseBlockIn = 0;
+  SharedPause& sp = Pause();
+  if (sp.openMenus == 0 && sp.releaseIn == 0) sp.saved = Var<uint8_t>(kPauseKeyBlock);
+  sp.releaseIn = 0;
+  InterlockedIncrement(&sp.openMenus);
   Var<uint8_t>(kPauseKeyBlock) = 1;
   g_inputLogIn = g_verbose ? 10 : 0;
   g_open = true;
@@ -450,7 +471,11 @@ void Close() {
   if (g_joyHandlersWereOn || u2::IsGamePaused()) AddJoyHandlers(Var<void*>(u2::addr::pFEng), nullptr);
   SetMenuKeyboardMap(g_savedKeyboardMap);
   // Restore the pause-key block a few frames later so an Esc still held from closing can't pause.
-  g_releasePauseBlockIn = 3;
+  SharedPause& sp = Pause();
+  if (InterlockedDecrement(&sp.openMenus) <= 0) {
+    sp.openMenus = 0;
+    sp.releaseIn = 3;
+  }
   g_open = false;
   g_menu = nullptr;
   g_rows.clear();
@@ -462,8 +487,10 @@ bool IsOpen() { return g_open; }
 // Restores the saved pause-key block, unless the game changed it meanwhile (it writes the byte
 // itself at 0x501221, 0x50161D and 0x5004B0).
 void Tick() {
-  if (g_releasePauseBlockIn > 0 && --g_releasePauseBlockIn == 0 && !g_open && Var<uint8_t>(kPauseKeyBlock) == 1)
-    Var<uint8_t>(kPauseKeyBlock) = g_savedPauseBlock;
+  SharedPause& sp = Pause();
+  if (sp.releaseIn > 0 && InterlockedDecrement(&sp.releaseIn) == 0 && sp.openMenus == 0 &&
+      Var<uint8_t>(kPauseKeyBlock) == 1)
+    Var<uint8_t>(kPauseKeyBlock) = sp.saved;
 }
 
 void Update(const std::string& title, const std::string& status) {
