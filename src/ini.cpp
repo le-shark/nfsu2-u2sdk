@@ -49,6 +49,7 @@ int ParseVirtualKey(const std::string& raw) {
       {"RIGHT", VK_RIGHT},     {"SHIFT", VK_SHIFT},     {"CTRL", VK_CONTROL},  {"CONTROL", VK_CONTROL},
       {"ALT", VK_MENU},        {"CAPSLOCK", VK_CAPITAL}, {"PAUSE", VK_PAUSE},  {"SCROLLLOCK", VK_SCROLL},
       {"NUMPAD0", VK_NUMPAD0}, {"OEM3", VK_OEM_3},      {"TILDE", VK_OEM_3},
+      {"MINUS", VK_OEM_MINUS}, {"-", VK_OEM_MINUS},  {"EQUALS", VK_OEM_PLUS}, {"=", VK_OEM_PLUS},
   };
   for (auto& e : table)
     if (n == e.name) return e.vk;
