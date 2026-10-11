@@ -7,6 +7,7 @@ std::vector<TestCase>& Tests() {
 int g_failures = 0;
 
 int main() {
+  std::setvbuf(stdout, nullptr, _IONBF, 0);  // a crashing test still shows the ones before it
   for (auto& t : Tests()) {
     int before = g_failures;
     t.fn();
