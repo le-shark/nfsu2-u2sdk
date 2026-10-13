@@ -48,25 +48,4 @@ IDirect3DTexture9* LoadDds(const uint8_t* d, size_t size, const char* name) {
   return t;
 }
 
-IDirect3DTexture9* CreateArgb(uint32_t w, uint32_t h, const std::vector<std::vector<uint32_t>>& levels, const char* name) {
-  IDirect3DDevice9* dev = u2::Device();
-  IDirect3DTexture9* t = nullptr;
-  UINT n = static_cast<UINT>(levels.size());
-  if (!dev || !n || FAILED(dev->CreateTexture(w, h, n, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &t, nullptr))) {
-    U2LOG("tex: CreateTexture %ux%u (%u levels) failed for %s", w, h, n, name);
-    return nullptr;
-  }
-  for (UINT lv = 0; lv < n; ++lv) {
-    uint32_t lw = std::max<uint32_t>(1, w >> lv), lh = std::max<uint32_t>(1, h >> lv);
-    if (levels[lv].size() < size_t(lw) * lh) { U2LOG("tex: %s level %u too small", name, lv); t->Release(); return nullptr; }
-    D3DLOCKED_RECT r;
-    if (FAILED(t->LockRect(lv, &r, nullptr, 0))) { U2LOG("tex: %s LockRect level %u failed", name, lv); t->Release(); return nullptr; }
-    for (uint32_t y = 0; y < lh; ++y)
-      std::memcpy(static_cast<uint8_t*>(r.pBits) + size_t(y) * r.Pitch, levels[lv].data() + size_t(y) * lw, lw * 4);
-    t->UnlockRect(lv);
-  }
-  U2LOG("tex: created %s %ux%u levels %u", name, w, h, n);
-  return t;
-}
-
 }  // namespace u2::texture
