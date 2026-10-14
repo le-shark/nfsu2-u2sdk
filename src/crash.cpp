@@ -43,6 +43,26 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS* ep) {
     Where(sp[i], w, sizeof w);
     U2LOG("  [esp+%02X] %08X %s", i * 4, static_cast<unsigned>(sp[i]), w);
   }
+  // The faulting address: freed or never mapped (a stale pointer) versus mapped but protected.
+  if (ep->ExceptionRecord->NumberParameters > 1) {
+    MEMORY_BASIC_INFORMATION mbi;
+    auto a = reinterpret_cast<const void*>(ep->ExceptionRecord->ExceptionInformation[1]);
+    if (VirtualQuery(a, &mbi, sizeof mbi))
+      U2LOG("  fault address: state %s, protect %08X, region %08X + %X", mbi.State == MEM_COMMIT ? "commit"
+            : mbi.State == MEM_RESERVE ? "reserve" : "free", static_cast<unsigned>(mbi.Protect),
+            static_cast<unsigned>(reinterpret_cast<uintptr_t>(mbi.BaseAddress)), static_cast<unsigned>(mbi.RegionSize));
+  }
+  // Deeper call trail: stack words that point into executable module code (likely return addresses), to 0x1000 bytes.
+  for (int i = 24; i < 0x400; ++i) {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!VirtualQuery(sp + i, &mbi, sizeof mbi) || mbi.State != MEM_COMMIT) break;
+    if (!VirtualQuery(reinterpret_cast<const void*>(sp[i]), &mbi, sizeof mbi) || mbi.Type != MEM_IMAGE ||
+        !(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+      continue;
+    char w[300];
+    Where(sp[i], w, sizeof w);
+    U2LOG("  trail [esp+%03X] %s", i * 4, w);
+  }
   return EXCEPTION_CONTINUE_SEARCH;
 }
 }  // namespace
