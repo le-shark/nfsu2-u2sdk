@@ -15,6 +15,7 @@
 namespace u2::freeze {
 
 bool Install();         // false if the bytes at 0x58132C are neither the game's nor our stub (another mod)
+bool Attach();          // only map the shared block (no patch): for an ASI that reads AnyHeld() but never holds
 void Hold(bool on);     // this ASI's hold; the world is frozen while any ASI holds it
 bool Held();            // this ASI holds it
 bool AnyHeld();         // any ASI holds it

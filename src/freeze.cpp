@@ -80,6 +80,8 @@ bool Install() {
   return true;
 }
 
+bool Attach() { return Map(); }
+
 void Hold(bool on) {
   if (!g_shared) return;
   if (on) InterlockedOr(&g_shared->holders, g_bit);
