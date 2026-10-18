@@ -126,6 +126,53 @@ void DrawRow(void* w, bool force) {
 
 void __fastcall ToggleDraw(void* w, void*) { DrawRow(w, true); }
 
+// ---- disabled rows (Callbacks::isEnabled) -------------------------------------------------------
+// FE object scripts, as FEToggleWidget Disable 0x51E3E0 walks them: obj+0x4C first script, script+0x04 next,
+// script+0x30 name hash (0x505450), obj+0x54 current script; a new current script is started with 0x517720
+// (thiscall obj) and its time +0x10 reset to 0.
+auto FEHashScriptName = Fn<unsigned(__cdecl*)(const char*)>(0x505450);
+auto FEObjectStartScript = Fn<void(__fastcall*)(void*, void*)>(0x517720);
+uint8_t* ScriptOf(void* obj, unsigned hash) {
+  if (!obj) return nullptr;
+  for (auto s = *reinterpret_cast<uint8_t**>(static_cast<uint8_t*>(obj) + 0x4C); s; s = *reinterpret_cast<uint8_t**>(s + 4))
+    if (*reinterpret_cast<unsigned*>(s + 0x30) == hash) return s;
+  return nullptr;
+}
+uint8_t*& CurrentScript(void* obj) { return *reinterpret_cast<uint8_t**>(static_cast<uint8_t*>(obj) + 0x54); }
+void PlayScript(void* obj, unsigned hash) {  // the body of 0x51E3E0's loop, for one object
+  uint8_t* s = ScriptOf(obj, hash);
+  if (!s) return;
+  if (CurrentScript(obj) != s) {
+    CurrentScript(obj) = s;
+    FEObjectStartScript(obj, nullptr);
+    *reinterpret_cast<uint32_t*>(CurrentScript(obj) + 0x10) = 0;
+  }
+  *reinterpret_cast<uint32_t*>(s + 0x10) = 0;
+}
+
+void SyncEnabled(uint8_t* w, bool want) {
+  static const unsigned kDisable = FEHashScriptName("Disable"), kUnHighlight = FEHashScriptName("UnHighlight");
+  void* name = *reinterpret_cast<void**>(w + 0x2C);
+  void* data = *reinterpret_cast<void**>(w + 0x30);
+  if (!want) {
+    // FEToggleWidget Disable (slot 8). Again whenever the name's script is no longer "Disable": the package's
+    // opening scripts run after the screen is built and replaced the grey of a row disabled at once ([game]
+    // 2026-10-19: Focus was grey only after the first loop through the modes).
+    bool greyed = name && ScriptOf(name, kDisable) && CurrentScript(name) == ScriptOf(name, kDisable);
+    if (w[0x28] || (name && ScriptOf(name, kDisable) && !greyed)) {
+      using SlotFn = void(__fastcall*)(void*, void*);
+      reinterpret_cast<SlotFn>(g_toggleVtbl[8])(w, nullptr);
+    }
+    return;
+  }
+  if (w[0x28]) return;
+  // Enable as slot 7 (0x51E270) does, but "UnHighlight" on the name and value only: on the arrows it fades them from
+  // alpha 150 to 0, a flash on a row the cursor is not on ([game] 2026-10-19). Disable left them hidden.
+  w[0x28] = 1;
+  PlayScript(name, kUnHighlight);
+  PlayScript(data, kUnHighlight);
+}
+
 // Show (slot 5): button rows hide their arrow images (+0x4C/+0x50) again, as the widget's own
 // Hide 0x50D610 does. The highlight scripts only animate colour, so the arrows stay hidden.
 void __fastcall ToggleShow(void* w, void*) {
@@ -511,15 +558,8 @@ void Update(const std::string& title, const std::string& status) {
     u2::feng::Print(kPkg, u2::feng::HashUpper("Header_text2"), g_status.c_str());
   }
   for (auto& r : g_rows) DrawRow(r.widget, false);
-  // Enable / Disable as the game's own toggle rows do: FEToggleWidget slots 7 (0x51E270: +0x28 = 1, "UnHighlight"
-  // scripts) and 8 (0x51E3E0: +0x28 = 0, "Disable" scripts on name, data and arrows; native-screen.md 1.4).
   if (g_cb.isEnabled)
-    for (auto& r : g_rows) {
-      bool want = g_cb.isEnabled(RowId(r.widget)), is = r.widget[0x28] != 0;
-      if (want == is) continue;
-      using SlotFn = void(__fastcall*)(void*, void*);
-      reinterpret_cast<SlotFn>(g_toggleVtbl[want ? 7 : 8])(r.widget, nullptr);
-    }
+    for (auto& r : g_rows) SyncEnabled(r.widget, g_cb.isEnabled(RowId(r.widget)));
   if (g_pendingActivate >= 0) {
     int row = g_pendingActivate;
     g_pendingActivate = -1;

@@ -147,6 +147,24 @@ inline void CarAxes(const uint8_t* car, Vec3 out[3]) {
   auto m = reinterpret_cast<const float*>(car + 0x90);
   for (int r = 0; r < 3; ++r) out[r] = {m[r * 4], m[r * 4 + 1], m[r * 4 + 2]};
 }
+// The car's model box in its own frame (x along axes[0] = forward, y, z up; metres; origin = CarPosition): the AABB
+// of its body parts (bumpers, body kit, spoiler, roof...; not the wheels) that CarRenderInfo keeps for its view test.
+// Car+0x554 = CarRenderInfo* (0x6317D6), +0x10 min, +0x20 max (0x620ED6..0x620EDA; Unlimiter CarRenderInfo.h:2085),
+// filled once when the render info is built (0x634800) and rebuilt with it when the ride changes: read it every
+// frame. False when there is none or it is empty (verified-in-binary.md "Car model box").
+inline bool CarLocalBox(const uint8_t* car, Vec3* mn, Vec3* mx) {
+  if (!car) return false;
+  auto cri = *reinterpret_cast<const uint8_t* const*>(car + 0x554);
+  if (!cri) return false;
+  auto a = reinterpret_cast<const float*>(cri + 0x10), b = reinterpret_cast<const float*>(cri + 0x20);
+  for (int i = 0; i < 3; ++i) {
+    float s = b[i] - a[i];
+    if (!(s > 0.2f && s < 12.0f) || !(a[i] > -20.0f && a[i] < 20.0f)) return false;  // empty (+-FLT_MAX) or garbage
+  }
+  *mn = {a[0], a[1], a[2]};
+  *mx = {b[0], b[1], b[2]};
+  return true;
+}
 
 template <typename T>
 inline T& Var(uintptr_t a) { return *reinterpret_cast<T*>(a); }
