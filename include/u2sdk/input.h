@@ -22,6 +22,9 @@ struct PadState {
 class Input {
  public:
   void Update();
+  // A light update for an idle script (e.g. photo mode closed): only these keys, no mouse, the pad only if asked.
+  // The other keys read as up until the next full Update.
+  void UpdateOnly(const int* vks, int n, bool pad);
 
   bool KeyDown(int vk) const { return vk > 0 && vk < 256 && cur_[vk]; }
   bool KeyPressed(int vk) const { return vk > 0 && vk < 256 && cur_[vk] && !prev_[vk]; }
@@ -41,6 +44,7 @@ class Input {
   float stickDeadzone = 0.15f;
 
  private:
+  void UpdatePad(bool focus);
   bool cur_[256] = {}, prev_[256] = {};
   PadState pad_;
   uint16_t prevButtons_ = 0;

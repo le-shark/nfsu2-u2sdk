@@ -53,7 +53,24 @@ void Input::Update() {
     warm_ = false;
   }
 
-  // Pad
+  UpdatePad(focus);
+}
+
+void Input::UpdateOnly(const int* vks, int n, bool pad) {
+  std::memcpy(prev_, cur_, sizeof(cur_));
+  prevButtons_ = pad_.buttons;
+  bool focus = WindowHasFocus();
+  std::memset(cur_, 0, sizeof(cur_));
+  for (int i = 0; i < n; ++i)
+    if (vks[i] > 0 && vks[i] < 256) cur_[vks[i]] = focus && (GetAsyncKeyState(vks[i]) & 0x8000) != 0;
+  mdx_ = mdy_ = 0;
+  wheel_ = 0;
+  warm_ = false;
+  if (pad) UpdatePad(focus);
+  else pad_ = PadState{};
+}
+
+void Input::UpdatePad(bool focus) {
   // XInputGetState on an empty slot is slow, so only retry about once a second.
   XINPUT_STATE st{};
   bool wasConnected = pad_.connected;
