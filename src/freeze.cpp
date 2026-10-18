@@ -45,7 +45,9 @@ __declspec(naked) void PauseDecisionStub() {
 bool Map() {
   if (g_shared) return true;
   char name[64];
-  std::snprintf(name, sizeof name, "Local\\NFSU2_u2sdk_freeze_%lu", GetCurrentProcessId());
+  // v1: bump the number with any change to Shared. ASIs released with another layout then see a stub they do not
+  // know at 0x58132C and stay off cleanly, instead of reading the wrong fields (2026-10-18 review).
+  std::snprintf(name, sizeof name, "Local\\NFSU2_u2sdk_freeze_v1_%lu", GetCurrentProcessId());
   HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Shared), name);
   if (!h) return false;
   auto* s = static_cast<Shared*>(MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared)));

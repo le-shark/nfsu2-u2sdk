@@ -23,7 +23,19 @@ std::string Ini::GetString(const char* section, const char* key, const char* def
 
 int Ini::GetInt(const char* section, const char* key, int def) const {
   std::string s = GetString(section, key, "");
-  return s.empty() ? def : static_cast<int>(std::strtol(s.c_str(), nullptr, 0));
+  if (s.empty()) return def;
+  // Decimal unless written 0x...: base 0 read "08" / "09" as octal and gave 0 (2026-10-18 review).
+  bool hex = s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
+  return static_cast<int>(std::strtol(s.c_str(), nullptr, hex ? 16 : 10));
+}
+
+bool Ini::GetBool(const char* section, const char* key, bool def) const {
+  std::string s = GetString(section, key, "");
+  if (s.empty()) return def;
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (s == "true" || s == "yes" || s == "on") return true;
+  if (s == "false" || s == "no" || s == "off") return false;
+  return GetInt(section, key, def) != 0;
 }
 
 float Ini::GetFloat(const char* section, const char* key, float def) const {

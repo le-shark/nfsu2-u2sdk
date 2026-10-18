@@ -78,7 +78,8 @@ SharedPause* g_pause = nullptr;
 SharedPause& Pause() {
   if (!g_pause) {
     char name[64];
-    std::snprintf(name, sizeof name, "Local\\NFSU2_u2sdk_optmenu_%lu", GetCurrentProcessId());
+    // v1: bump the number with any change to SharedPause (as freeze.cpp's block).
+    std::snprintf(name, sizeof name, "Local\\NFSU2_u2sdk_optmenu_v1_%lu", GetCurrentProcessId());
     HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(SharedPause), name);
     if (h) g_pause = static_cast<SharedPause*>(MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedPause)));
     static SharedPause local{};  // no mapping: this ASI alone

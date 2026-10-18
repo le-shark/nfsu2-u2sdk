@@ -8,7 +8,7 @@ class Ini {
   Ini();                                   // <module dir>\<module name>.ini
   int GetInt(const char* section, const char* key, int def) const;
   float GetFloat(const char* section, const char* key, float def) const;
-  bool GetBool(const char* section, const char* key, bool def) const { return GetInt(section, key, def) != 0; }
+  bool GetBool(const char* section, const char* key, bool def) const;  // 1 / 0, also true / yes / on
   std::string GetString(const char* section, const char* key, const char* def) const;
   const std::string& Path() const { return path_; }
 

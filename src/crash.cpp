@@ -28,9 +28,16 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_CONTINUE_SEARCH;
   if (InterlockedIncrement(&g_logged) > 4) return EXCEPTION_CONTINUE_SEARCH;
   CONTEXT* c = ep->ContextRecord;
+  // A vectored handler sees every exception first, also ones the game, a driver or another mod catches and handles:
+  // the line says so, and a crash is the last of these lines before the log ends (2026-10-18 review).
+  if (code == EXCEPTION_STACK_OVERFLOW) {  // too little stack left for the trail below
+    U2LOG("CRASH? stack overflow at EIP %08X (first-chance exception)", c->Eip);
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
   char where[300];
   Where(c->Eip, where, sizeof where);
-  U2LOG("CRASH %08X at %s (EIP %08X) access %s %08X", code, where, c->Eip,
+  U2LOG("CRASH? %08X at %s (EIP %08X) access %s %08X (first-chance exception: a crash if the log ends here)", code,
+        where, c->Eip,
         ep->ExceptionRecord->NumberParameters > 1 ? (ep->ExceptionRecord->ExceptionInformation[0] ? "write" : "read") : "?",
         ep->ExceptionRecord->NumberParameters > 1 ? static_cast<unsigned>(ep->ExceptionRecord->ExceptionInformation[1]) : 0u);
   U2LOG("  EAX %08X EBX %08X ECX %08X EDX %08X ESI %08X EDI %08X EBP %08X ESP %08X", c->Eax, c->Ebx, c->Ecx, c->Edx,
