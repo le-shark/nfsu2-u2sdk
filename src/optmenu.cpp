@@ -137,6 +137,7 @@ void __fastcall ToggleShow(void* w, void*) {
 
 // Act: same shape as the game's toggle rows (e.g. 0x4C3C70): change value, BlinkArrows, Draw.
 void __fastcall ToggleAct(void* w, void*, const char* /*pkg*/, unsigned msg) {
+  if (!static_cast<uint8_t*>(w)[0x28]) return;  // disabled (isEnabled): the menu already skips it; a click must too
   if ((msg == kMsgLeft || msg == kMsgRight) && !IsAction(w)) {
     g_cb.adjust(RowId(w), msg == kMsgRight ? 1 : -1);
     FEToggleWidget_BlinkArrows(w, nullptr, msg);
@@ -510,6 +511,15 @@ void Update(const std::string& title, const std::string& status) {
     u2::feng::Print(kPkg, u2::feng::HashUpper("Header_text2"), g_status.c_str());
   }
   for (auto& r : g_rows) DrawRow(r.widget, false);
+  // Enable / Disable as the game's own toggle rows do: FEToggleWidget slots 7 (0x51E270: +0x28 = 1, "UnHighlight"
+  // scripts) and 8 (0x51E3E0: +0x28 = 0, "Disable" scripts on name, data and arrows; native-screen.md 1.4).
+  if (g_cb.isEnabled)
+    for (auto& r : g_rows) {
+      bool want = g_cb.isEnabled(RowId(r.widget)), is = r.widget[0x28] != 0;
+      if (want == is) continue;
+      using SlotFn = void(__fastcall*)(void*, void*);
+      reinterpret_cast<SlotFn>(g_toggleVtbl[want ? 7 : 8])(r.widget, nullptr);
+    }
   if (g_pendingActivate >= 0) {
     int row = g_pendingActivate;
     g_pendingActivate = -1;

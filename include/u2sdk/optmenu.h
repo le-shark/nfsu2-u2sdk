@@ -18,6 +18,10 @@ struct Callbacks {
   void (*activate)(int row);                     // ACCEPT / click on a row (called from frame code)
   void (*back)();                                // BACK pressed (called from frame code)
   bool (*isAction)(int row);                     // button row: no < > arrows, LEFT/RIGHT ignored
+  // Optional: false = the row is shown (value still drawn live) but disabled the native way: the widget's Disable()
+  // 0x51E3E0 plays the package's "Disable" script (grey text) and the menu cursor skips it (0x5390E0 loops past
+  // widgets with +0x28 == 0). Checked every frame.
+  bool (*isEnabled)(int row) = nullptr;
 };
 
 // Sidebar layout, in FE canvas units (480 high, origin at the centre; with WidescreenFix the
