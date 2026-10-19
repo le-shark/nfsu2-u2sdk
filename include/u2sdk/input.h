@@ -1,6 +1,7 @@
 #pragma once
 // Polled input for scripts: keyboard (GetAsyncKeyState, only while the game window has focus),
-// relative mouse (cursor re-centering while captured), mouse wheel (game's DInput lZ) and the
+// relative mouse (cursor re-centering while captured), mouse wheel (the game's DInput lZ, or the window's
+// WM_MOUSEWHEEL when another mod replaced the game's mouse read) and the
 // first connected XInput pad. Call Update() once per game frame.
 #include <cstdint>
 

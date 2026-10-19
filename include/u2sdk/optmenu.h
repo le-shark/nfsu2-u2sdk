@@ -22,6 +22,9 @@ struct Callbacks {
   // 0x51E3E0 plays the package's "Disable" script (grey text) and the menu cursor skips it (0x5390E0 loops past
   // widgets with +0x28 == 0). Checked every frame.
   bool (*isEnabled)(int row) = nullptr;
+  // Optional: a short tip (at most 21 characters) at the bottom of the bar, below the inner panel, in the package's
+  // own console "Back" prompt text (BACK_BUTTON).
+  const char* footer = nullptr;
 };
 
 // Sidebar layout, in FE canvas units (480 high, origin at the centre; with WidescreenFix the

@@ -318,6 +318,36 @@ void HideObject(const char* pkg, const char* name) {
   if (auto o = u2::feng::FindObject(pkg, u2::feng::HashUpper(name))) u2::feng::SetInvisible(o);
 }
 
+// ---- footer tip (Callbacks::footer) ------------------------------------------------------------
+// The package's console back prompt: group UI_COMMON_BACK (in NON_INTERACTIVE_GROUP) holding the button glyph
+// JOY_EVENT_CANCEL and the text BACK_BUTTON (white, scale 0.7, 22-byte buffer; FEngLib decode). They are ConsoleOnly,
+// which on PC only means "made invisible at load" (0x51C860 -> FEngSetInvisible 0x50CA00), so the text can be shown
+// again with FEngSetVisible 0x50CA50. Its formatting (FEString +0x6C, tag 'Sj', 0x53501F) has word wrap (4) with no
+// max width; cleared, so the tip stays on one line, left-aligned like the row labels (format 0).
+auto FEngSetVisible = Fn<void(__cdecl*)(void*)>(0x50CA50);
+constexpr uint32_t kObjInvisible = 1;
+
+void ShowFooter(const char* pkg) {
+  auto group = reinterpret_cast<uint8_t*>(u2::feng::FindObject(pkg, u2::feng::HashUpper("UI_COMMON_BACK")));
+  auto text = reinterpret_cast<uint8_t*>(u2::feng::FindObject(pkg, u2::feng::HashUpper("BACK_BUTTON")));
+  auto glyph = reinterpret_cast<uint8_t*>(u2::feng::FindObject(pkg, u2::feng::HashUpper("JOY_EVENT_CANCEL")));
+  for (uint8_t* o : {group, text})
+    if (o && (Flags(o) & kObjInvisible)) FEngSetVisible(o);
+  if (glyph && !(Flags(glyph) & kObjInvisible)) u2::feng::SetInvisible(reinterpret_cast<u2::feng::FEObject*>(glyph));
+}
+
+void PlaceFooter(const char* pkg, float x, float y) {
+  uint8_t* nig = Obj(pkg, "NON_INTERACTIVE_GROUP ");
+  uint8_t* group = Obj(pkg, "UI_COMMON_BACK");
+  uint8_t* text = Obj(pkg, "BACK_BUTTON");
+  if (!nig || !group || !text) return;
+  *reinterpret_cast<uint32_t*>(text + 0x6C) &= ~4u;  // no word wrap
+  float gx = Pos(nig)[0] + Pos(group)[0], gy = Pos(nig)[1] + Pos(group)[1];
+  SetGeometry(text, x - gx, y - gy, Size(text)[0], Size(text)[1]);
+  u2::feng::Print(pkg, u2::feng::HashUpper("BACK_BUTTON"), g_cb.footer);
+  ShowFooter(pkg);
+}
+
 // The scroll bar is shown again by the base handler every tick (0x544490 -> 0x538080), so this
 // runs after every base message. All rows fit, so it is never needed.
 void HideScrollbar(const char* pkg) {
@@ -377,8 +407,12 @@ void ApplySidebar(uint8_t* m, const char* pkg, int rows) {
       std::snprintf(name, sizeof name, part, i);
       HideObject(pkg, name);
     }
-  for (const char* n : {"UI_COMMON_BACK", "U2_SCROLLER_CORNER", "U2_SCROLLER_CORNER(65)"}) HideObject(pkg, n);
+  for (const char* n : {"U2_SCROLLER_CORNER", "U2_SCROLLER_CORNER(65)"}) HideObject(pkg, n);
   HideScrollbar(pkg);
+  // The tip sits in the strip between the inner panel (ends 32 above the outer frame) and the frame, its top 7 below
+  // the panel, left-aligned with the row labels.
+  if (g_cb.footer) PlaceFooter(pkg, startX, bar.b - 25);
+  else HideObject(pkg, "UI_COMMON_BACK");
   U2LOG("menu: sidebar bar (%.0f,%.0f)-(%.0f,%.0f) from frame (%.0f,%.0f)-(%.0f,%.0f); rows x=%.0f y=%.0f step=%.0f data x=%.0f w=%.0f",
         bar.l, bar.t, bar.r, bar.b, ref.l, ref.t, ref.r, ref.b, startX, startY, f(0x108), dataX, dataW);
 }
@@ -558,6 +592,7 @@ void Update(const std::string& title, const std::string& status) {
     u2::feng::Print(kPkg, u2::feng::HashUpper("Header_text2"), g_status.c_str());
   }
   for (auto& r : g_rows) DrawRow(r.widget, false);
+  if (g_cb.footer) ShowFooter(kPkg);  // in case the package's opening pass hides ConsoleOnly objects after the factory
   if (g_cb.isEnabled)
     for (auto& r : g_rows) SyncEnabled(r.widget, g_cb.isEnabled(RowId(r.widget)));
   if (g_pendingActivate >= 0) {

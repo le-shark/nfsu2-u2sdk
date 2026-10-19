@@ -7,9 +7,70 @@
 #include <cstring>
 
 #include "u2sdk/game.h"
+#include "u2sdk/log.h"
 
 namespace u2 {
 namespace {
+// Mouse wheel. The game reads its DInput mouse in 0x5BF860 (ecx = 0x8763D0, lZ stored at 0x8763EC), called from
+// 0x5D2C97. NFSU-XtendedInput redirects that call to its own reader (dllmain.cpp:2069) and never writes the wheel, so
+// with it (or without a DInput mouse) the wheel comes from the window's WM_MOUSEWHEEL messages instead
+// (docs/kb/fe-input.md). Only one source is used at a time, so a notch is never counted twice.
+constexpr uintptr_t kMouseReadCall = 0x5D2C97, kMouseRead = 0x5BF860, kMouseDevice = 0x8763D0;
+volatile LONG g_msgWheel = 0;  // WM_MOUSEWHEEL deltas not yet taken
+HHOOK g_msgHook = nullptr;
+bool g_msgHookTried = false;
+
+LRESULT CALLBACK WheelHook(int code, WPARAM wp, LPARAM lp) {
+  // PM_REMOVE only: a message peeked without removal would be seen again.
+  if (code == HC_ACTION && wp == PM_REMOVE) {
+    auto m = reinterpret_cast<const MSG*>(lp);
+    if (m->message == WM_MOUSEWHEEL) InterlockedExchangeAdd(&g_msgWheel, GET_WHEEL_DELTA_WPARAM(m->wParam));
+  }
+  return CallNextHookEx(g_msgHook, code, wp, lp);
+}
+
+// A thread message hook on the game window's thread: it leaves the window procedure chain (WidescreenFix,
+// XtendedInput) alone.
+void EnsureWheelHook() {
+  if (g_msgHookTried) return;
+  HWND w = Window();
+  if (!w) return;
+  g_msgHookTried = true;
+  g_msgHook = SetWindowsHookExA(WH_GETMESSAGE, WheelHook, nullptr, GetWindowThreadProcessId(w, nullptr));
+  if (!g_msgHook) U2LOG("input: window message hook failed (%lu); the wheel works only through the game", GetLastError());
+}
+
+bool GameReadsMouse() {
+  auto p = reinterpret_cast<const uint8_t*>(kMouseReadCall);
+  int32_t rel;
+  std::memcpy(&rel, p + 1, 4);
+  return p[0] == 0xE8 && kMouseReadCall + 5 + rel == kMouseRead && Var<void*>(kMouseDevice) != nullptr;
+}
+
+int TakeWheel(bool focus) {
+  EnsureWheelHook();
+  LONG msg = InterlockedExchange(&g_msgWheel, 0);
+  static LONG rest = 0;  // high-resolution wheels send parts of a notch
+  if (!focus) {
+    rest = 0;
+    return 0;
+  }
+  static int source = -1;  // logged once per change: 1 game, 0 messages
+  bool game = GameReadsMouse();
+  if (int(game) != source) {
+    source = int(game);
+    U2LOG("input: mouse wheel from %s", game ? "the game's mouse read" : "window messages (the game's mouse read is replaced)");
+  }
+  if (game) {
+    rest = 0;
+    return Var<int>(addr::MouseWheel) / WHEEL_DELTA;
+  }
+  rest += msg;
+  int notches = rest / WHEEL_DELTA;
+  rest -= notches * WHEEL_DELTA;
+  return notches;
+}
+
 float Stick(SHORT v, float dz) {
   float f = v / 32767.0f;
   if (f < -1) f = -1;
@@ -37,9 +98,8 @@ void Input::Update() {
 
   // Mouse
   mdx_ = mdy_ = 0;
-  wheel_ = 0;
+  wheel_ = TakeWheel(focus);
   if (focus) {
-    wheel_ = Var<int>(addr::MouseWheel) / WHEEL_DELTA;
     POINT c, p;
     if (capture_ && WindowPoint(&c, capX_, capY_) && GetCursorPos(&p)) {
       if (warm_) {
@@ -65,6 +125,7 @@ void Input::UpdateOnly(const int* vks, int n, bool pad) {
     if (vks[i] > 0 && vks[i] < 256) cur_[vks[i]] = focus && (GetAsyncKeyState(vks[i]) & 0x8000) != 0;
   mdx_ = mdy_ = 0;
   wheel_ = 0;
+  InterlockedExchange(&g_msgWheel, 0);  // scrolls while idle must not arrive at the next full Update
   warm_ = false;
   if (pad) UpdatePad(focus);
   else pad_ = PadState{};
