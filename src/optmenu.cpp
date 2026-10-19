@@ -409,9 +409,10 @@ void ApplySidebar(uint8_t* m, const char* pkg, int rows) {
     }
   for (const char* n : {"U2_SCROLLER_CORNER", "U2_SCROLLER_CORNER(65)"}) HideObject(pkg, n);
   HideScrollbar(pkg);
-  // The tip sits in the strip between the inner panel (ends 32 above the outer frame) and the frame, its top 7 below
-  // the panel, left-aligned with the row labels.
-  if (g_cb.footer) PlaceFooter(pkg, startX, bar.b - 25);
+  // The tip sits in the strip between the inner panel (ends 32 above the outer frame) and the frame, left-aligned with
+  // the row labels. Its top 28 above the frame centres the glyphs in the strip ([game] 2026-10-19 F12 at 1080p: with
+  // 25 the text ran 999..1027 px in a 971..1041 px strip, 3 units low).
+  if (g_cb.footer) PlaceFooter(pkg, startX, bar.b - 28);
   else HideObject(pkg, "UI_COMMON_BACK");
   U2LOG("menu: sidebar bar (%.0f,%.0f)-(%.0f,%.0f) from frame (%.0f,%.0f)-(%.0f,%.0f); rows x=%.0f y=%.0f step=%.0f data x=%.0f w=%.0f",
         bar.l, bar.t, bar.r, bar.b, ref.l, ref.t, ref.r, ref.b, startX, startY, f(0x108), dataX, dataW);

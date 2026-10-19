@@ -47,8 +47,21 @@ bool GameReadsMouse() {
   return p[0] == 0xE8 && kMouseReadCall + 5 + rel == kMouseRead && Var<void*>(kMouseDevice) != nullptr;
 }
 
+// The game handles one window message per frame: its pump 0x5BF1C0 (called once per GameLoop pass, 0x58155D)
+// peeks, then translates and dispatches a single message. With a backlog a wheel message waited several frames
+// ([game] 2026-10-19: "sometimes it lags behind"). So the wheel messages are taken out of the queue at once and
+// dispatched as the pump would (every window procedure still sees them); the hook counts them on the way.
+void PumpWheelMessages() {
+  MSG m;
+  for (int i = 0; i < 64 && PeekMessageA(&m, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE); ++i) {
+    TranslateMessage(&m);
+    DispatchMessageA(&m);
+  }
+}
+
 int TakeWheel(bool focus) {
   EnsureWheelHook();
+  if (g_msgHook && !GameReadsMouse()) PumpWheelMessages();
   LONG msg = InterlockedExchange(&g_msgWheel, 0);
   static LONG rest = 0;  // high-resolution wheels send parts of a notch
   if (!focus) {
@@ -125,7 +138,9 @@ void Input::UpdateOnly(const int* vks, int n, bool pad) {
     if (vks[i] > 0 && vks[i] < 256) cur_[vks[i]] = focus && (GetAsyncKeyState(vks[i]) & 0x8000) != 0;
   mdx_ = mdy_ = 0;
   wheel_ = 0;
-  InterlockedExchange(&g_msgWheel, 0);  // scrolls while idle must not arrive at the next full Update
+  // Scrolls while idle must not arrive at the next full Update (queued ones included).
+  if (g_msgHook && !GameReadsMouse()) PumpWheelMessages();
+  InterlockedExchange(&g_msgWheel, 0);
   warm_ = false;
   if (pad) UpdatePad(focus);
   else pad_ = PadState{};
