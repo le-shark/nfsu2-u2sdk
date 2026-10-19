@@ -75,5 +75,4 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS* ep) {
 }  // namespace
 
 void InstallLogger() { AddVectoredExceptionHandler(1, Handler); }
-void Describe(unsigned long addr, char* out, unsigned n) { Where(addr, out, n); }
 }  // namespace u2::crash

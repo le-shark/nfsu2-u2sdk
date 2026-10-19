@@ -10,7 +10,6 @@
 
 #include "u2sdk/feng.h"
 #include "u2sdk/game.h"
-#include "u2sdk/hook.h"
 #include "u2sdk/log.h"
 #include "u2sdk/mem.h"
 
@@ -95,30 +94,6 @@ bool g_pendingBack = false;
 bool g_hidden = false;
 uint32_t g_savedPortMask;  // our package's pkg+0x24 while hidden
 std::string g_title, g_status;
-
-// ---- keyboard into the menu without the menu action map ------------------------------------------
-// Switching the keyboard to the menu action map (0x5B7ED0 -> next frame 0x5CFBF0 -> SetActionMap, 0x5CF35E) goes
-// through DirectInput's mapper dimap.dll, which rewrites its user map files on every switch. On a PC where those
-// live in the UAC VirtualStore that blocked the game thread for 0.8 s on open and 1.3 s on close ([game]
-// 2026-10-19, hang samples inside dimap.dll; the game's own pause menu stalls the same way). So the arrows, Enter
-// and Esc are added to the FE's pad mask instead: cFEngGameInterface::GetJoyPadMask 0x50C6D0 (thiscall, one byte
-// arg port, ret 4; called by FEngine::Update 0x558C8E for each pad) returns the bits FEJoyPad::Update turns into
-// PAD_* messages with the game's own repeat timing (mask bits fe-input.md 1.4: UP 1, DOWN 2, LEFT 4, RIGHT 8,
-// ACCEPT 0x10, BACK 0x20). Port 0 only, so a key never counts twice. Without the hook: the map switch as before.
-using GetJoyPadMaskFn = uint32_t(__fastcall*)(void*, void*, int);
-GetJoyPadMaskFn oGetJoyPadMask = nullptr;
-bool g_keysToMask = false;     // hook in place: no action-map switch
-bool g_switchedMap = false;    // this open switched the map (fallback)
-
-uint32_t __fastcall GetJoyPadMaskDetour(void* self, void* edx, int port) {
-  uint32_t m = oGetJoyPadMask(self, edx, port);
-  if ((port & 0xFF) != 0 || !g_open || g_hidden || !u2::WindowHasFocus()) return m;
-  static const struct { int vk; uint32_t bit; } kKeys[] = {
-      {VK_UP, 1}, {VK_DOWN, 2}, {VK_LEFT, 4}, {VK_RIGHT, 8}, {VK_RETURN, 0x10}, {VK_ESCAPE, 0x20}};
-  for (const auto& k : kKeys)
-    if (GetAsyncKeyState(k.vk) & 0x8000) m |= k.bit;
-  return m;
-}
 
 void* g_menuVtbl[5];
 void* g_toggleVtbl[17];
@@ -495,10 +470,6 @@ bool Install(const Callbacks& cb, const Layout& layout, bool verbose, FactoryMod
   g_toggleVtbl[1] = reinterpret_cast<void*>(&ToggleAct);
   g_toggleVtbl[3] = reinterpret_cast<void*>(&ToggleDraw);
   g_toggleVtbl[5] = reinterpret_cast<void*>(&ToggleShow);
-  // Enabled at once: the daylight tuner installs after its other hooks were enabled.
-  g_keysToMask = u2::hook::Create(0x50C6D0, &GetJoyPadMaskDetour, &oGetJoyPadMask, "cFEngGameInterface::GetJoyPadMask") &&
-                 u2::hook::Enable(0x50C6D0);
-  U2LOG("menu: keyboard %s", g_keysToMask ? "through the FE pad mask (no action-map switch)" : "through the menu action map");
   if (mode == FactoryMode::WhileOpening) {
     U2LOG("menu: ready (factory borrowed only while opening)");
     return true;
@@ -542,11 +513,8 @@ bool Open() {
     if (g_joyHandlersWereOn) AddJoyHandlers(Var<void*>(u2::addr::pFEng), nullptr);
     return false;
   }
-  g_switchedMap = !g_keysToMask;
-  if (g_switchedMap) {
-    g_savedKeyboardMap = Var<uint8_t>(kMenuKeyboardMap);
-    SetMenuKeyboardMap(1);
-  }
+  g_savedKeyboardMap = Var<uint8_t>(kMenuKeyboardMap);
+  SetMenuKeyboardMap(1);
   // While a restore from the last close is pending, the block byte still holds our 1.
   SharedPause& sp = Pause();
   if (sp.openMenus == 0 && sp.releaseIn == 0) sp.saved = Var<uint8_t>(kPauseKeyBlock);
@@ -585,8 +553,7 @@ void Close() {
   // The joy handlers are global, not per package: if another screen needs them (registered
   // before us, or a pause screen that came up meanwhile), register them again.
   if (g_joyHandlersWereOn || u2::IsGamePaused()) AddJoyHandlers(Var<void*>(u2::addr::pFEng), nullptr);
-  if (g_switchedMap) SetMenuKeyboardMap(g_savedKeyboardMap);
-  g_switchedMap = false;
+  SetMenuKeyboardMap(g_savedKeyboardMap);
   // Restore the pause-key block a few frames later so an Esc still held from closing can't pause.
   SharedPause& sp = Pause();
   if (InterlockedDecrement(&sp.openMenus) <= 0) {
