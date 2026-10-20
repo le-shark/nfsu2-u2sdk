@@ -326,6 +326,10 @@ void HideObject(const char* pkg, const char* name) {
 // max width; cleared, so the tip stays on one line, left-aligned like the row labels (format 0).
 auto FEngSetVisible = Fn<void(__cdecl*)(void*)>(0x50CA50);
 constexpr uint32_t kObjInvisible = 1;
+// BACK_BUTTON holds 22 characters, and FEPrintf cuts at that (0x537B30). FEString::SetString 0x535FE0 (thiscall,
+// ret 4) grows the buffer itself; then the custom-text flag 2, as 0x537B70 does (verified-in-binary.md "FEPrintf cuts
+// the text at the object's buffer"; the career mod's shop_class.cpp SetText, same steps).
+auto FEStringSetString = Fn<void(__fastcall*)(void*, void*, const char*)>(0x535FE0);
 
 void ShowFooter(const char* pkg) {
   auto group = reinterpret_cast<uint8_t*>(u2::feng::FindObject(pkg, u2::feng::HashUpper("UI_COMMON_BACK")));
@@ -344,7 +348,10 @@ void PlaceFooter(const char* pkg, float x, float y) {
   *reinterpret_cast<uint32_t*>(text + 0x6C) &= ~4u;  // no word wrap
   float gx = Pos(nig)[0] + Pos(group)[0], gy = Pos(nig)[1] + Pos(group)[1];
   SetGeometry(text, x - gx, y - gy, Size(text)[0], Size(text)[1]);
-  u2::feng::Print(pkg, u2::feng::HashUpper("BACK_BUTTON"), g_cb.footer);
+  if (*reinterpret_cast<int*>(text + 0x18) == 2) {  // a text object (0x537BBE)
+    FEStringSetString(text, nullptr, g_cb.footer);
+    *reinterpret_cast<uint32_t*>(text + 0x1C) |= 2;
+  }
   ShowFooter(pkg);
 }
 
