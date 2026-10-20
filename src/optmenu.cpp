@@ -199,14 +199,24 @@ void SyncEnabled(uint8_t* w, bool want) {
   w[0x28] = 1;
   PlayScript(name, kUnHighlight);
   PlayScript(data, kUnHighlight);
+  // A slot without a "Disable" script was greyed by hand (SetGrey) while its current script stayed "UnHighlight", and
+  // restarting that script does not apply its colour again: the grey stayed until the cursor came ([game] 2026-10-20:
+  // Watermark Pos. stayed grey, and Aperture looked disabled after scrolling into a slot Focus had greyed). White, the
+  // UNHIGHLIGHT colour, by hand too. The cursor's row never comes through here (a disabled row is never the cursor's).
+  if (name && !ScriptOf(name, kDisable)) {
+    SetGrey(name, 255);
+    SetGrey(data, 255);
+  }
 }
 
 // Show (slot 5): button rows hide their arrow images (+0x4C/+0x50) again, as the widget's own
-// Hide 0x50D610 does. The highlight scripts only animate colour, so the arrows stay hidden. Disabled rows too (their
-// Disable left them hidden; a scroll shows every widget again).
+// Hide 0x50D610 does. The highlight scripts only animate colour, so the arrows stay hidden. Only button rows: the
+// arrows of every other row are shown by alpha alone (LEFT/RIGHT_ARROW_n scripts: INIT and HIGHLIGHT 150, UNHIGHLIGHT
+// fades to 0, so only the cursor's row shows them); hiding a disabled row's arrows here left them hidden for good
+// when it was enabled again, as nothing makes them visible ([game] 2026-10-20: Focus lost its arrows).
 void __fastcall ToggleShow(void* w, void*) {
   FEToggleWidget_Show(w, nullptr);
-  if (!IsAction(w) && !(g_cb.isEnabled && !g_cb.isEnabled(RowId(w)))) return;
+  if (!IsAction(w)) return;
   for (int off : {0x4C, 0x50})
     u2::feng::SetInvisible(*reinterpret_cast<u2::feng::FEObject**>(static_cast<uint8_t*>(w) + off));
 }
