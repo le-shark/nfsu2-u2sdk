@@ -157,10 +157,31 @@ void PlayScript(void* obj, unsigned hash) {  // the body of 0x51E3E0's loop, for
   *reinterpret_cast<uint32_t*>(s + 0x10) = 0;
 }
 
+// The package has a "Disable" script only on rows 2, 3, 5 and 6 (OPTION_NAME_n / OPTION_DATA_n, FEngLib decode); with
+// scrolling any row can sit in any slot ([game] 2026-10-20: Watermark Pos. did not grey). On the others the script's
+// own grey is written straight into the object's colour (FEObject data +0x2C: B, G, R, A ints; dirty flag 0x400000,
+// as FEngSetColor 0x51D843), every frame while disabled; "UnHighlight" (on every slot) puts white back on enable.
+void SetGrey(void* obj, int v) {
+  if (!obj) return;
+  auto c = *reinterpret_cast<int**>(static_cast<uint8_t*>(obj) + 0x2C);
+  if (!c || (c[0] == v && c[1] == v && c[2] == v)) return;
+  c[0] = c[1] = c[2] = v;
+  *reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(obj) + 0x1C) |= 0x400000;
+}
+
 void SyncEnabled(uint8_t* w, bool want) {
   static const unsigned kDisable = FEHashScriptName("Disable"), kUnHighlight = FEHashScriptName("UnHighlight");
   void* name = *reinterpret_cast<void**>(w + 0x2C);
   void* data = *reinterpret_cast<void**>(w + 0x30);
+  if (!want && name && !ScriptOf(name, kDisable)) {
+    if (w[0x28]) {
+      using SlotFn = void(__fastcall*)(void*, void*);
+      reinterpret_cast<SlotFn>(g_toggleVtbl[8])(w, nullptr);  // +0x28 = 0 (the cursor skips it), arrows
+    }
+    SetGrey(name, 155);  // the Disable script's colours (OPTION_NAME_6 / OPTION_DATA_6)
+    SetGrey(data, 150);
+    return;
+  }
   if (!want) {
     // FEToggleWidget Disable (slot 8). Again whenever the name's script is no longer "Disable": the package's
     // opening scripts run after the screen is built and replaced the grey of a row disabled at once ([game]
