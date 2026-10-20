@@ -33,7 +33,7 @@ struct Callbacks {
 // visible width is 480 * aspect). The package is drawn at native size; only the window frame is
 // reshaped into a full-height bar at the left edge and the row columns are moved to fit it.
 struct Layout {
-  float width = 340;            // bar width (outer black backing)
+  float width = 356;            // bar width (outer black backing); 340 until 2026-10-20 (room for the scroll bar)
   float margin = 16;            // gap between the bar and the screen edges
   float valueWidth = 110;       // width of the "< value >" column between the arrows
   int backingAlpha = 140;       // 0..255 alpha of the menu backing panels (transparency)
