@@ -11,7 +11,9 @@
 namespace u2::optmenu {
 
 struct Callbacks {
-  int rowCount;                                  // <= 11 (package has OPTION_NAME_1..11)
+  // Any number: the package has 11 row slots (OPTION_NAME_1..11); with more rows the menu scrolls (a window of 11
+  // onto the rows, with the native scroll bar at the bar's right edge).
+  int rowCount;
   std::string (*label)(int row);
   std::string (*value)(int row);
   void (*adjust)(int row, int dir);              // LEFT/RIGHT on a row
@@ -22,8 +24,8 @@ struct Callbacks {
   // 0x51E3E0 plays the package's "Disable" script (grey text) and the menu cursor skips it (0x5390E0 loops past
   // widgets with +0x28 == 0). Checked every frame.
   bool (*isEnabled)(int row) = nullptr;
-  // Optional: a short tip (at most 21 characters) at the bottom of the bar, below the inner panel, in the package's
-  // own console "Back" prompt text (BACK_BUTTON).
+  // Optional: a short tip at the bottom of the bar, below the inner panel, in the package's own console "Back" prompt
+  // text (BACK_BUTTON; its buffer grows, one line).
   const char* footer = nullptr;
 };
 
@@ -56,6 +58,9 @@ bool IsOpen();
 // not drawn (see IsHidden) and takes no input.
 void SetHidden(bool hidden);
 bool IsHidden();
+// The game's own keyboard map (the one in use before Open) while the menu stays loaded, e.g. to drive; false = the
+// menu map again. Hide the menu meanwhile (SetHidden) so it takes no pad input.
+void SetGameInput(bool on);
 void Tick();                                     // every frame, even when photo mode is off
 void Update(const std::string& title, const std::string& status);  // per frame: redraw, run deferred actions
 

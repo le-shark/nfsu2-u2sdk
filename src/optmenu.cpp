@@ -26,7 +26,7 @@ constexpr uintptr_t kJoyHandlersOn = 0x8384B8;    // set by AddJoyHandlers 0x52C
 constexpr uintptr_t kKeyboardMapCtx = 0x870788;   // action map in use (1 = menu), cached by 0x5CFBF0
 constexpr int kMaxRows = 11;
 constexpr unsigned kMsgLeft = 0x9120409E, kMsgRight = 0xB5971BF1, kMsgAccept = 0x406415E3, kMsgBack = 0x911AB364,
-                   kMsgSelect = 0xC407210;
+                   kMsgSelect = 0xC407210, kMsgUp = 0x72619778, kMsgDown = 0x911C0A4B;
 
 template <typename F>
 F Fn(uintptr_t a) { return reinterpret_cast<F>(a); }
@@ -64,7 +64,13 @@ struct Row {
   uint8_t* widget;
   std::string label, value;
 };
-std::vector<Row> g_rows;
+std::vector<Row> g_rows;  // one per widget, in slot order (at most kMaxRows)
+// More rows than widgets (2026-10-20): the widgets are a window onto the rows, widget k shows row g_top + k (the
+// career car list scrolls the same way, car_list.cpp, [game] 2026-10-06). The package has only 11 sets of row objects
+// (AddToggleOption 0x54EF30 binds OPTION_NAME_<n> etc. by index; a 12th widget gets none), so the game's own scrolling,
+// which hides whole widgets (0x52FDB0), cannot show more than 11 rows.
+int g_rowCount = 0, g_top = 0;
+bool Scrolls() { return g_rowCount > int(g_rows.size()); }
 int g_pendingActivate = -1;
 // The pause-key block byte is one game byte, but every ASI has its own copy of this module (photo mode, the daylight
 // tuner). Its saved value, the pending restore and the count of open menus are therefore kept per process in a small
@@ -92,6 +98,7 @@ uint8_t g_savedKeyboardMap = 0;
 bool g_joyHandlersWereOn = false;
 bool g_pendingBack = false;
 bool g_hidden = false;
+bool g_gameInput = false;  // SetGameInput: the keyboard map saved at Open is back while the menu stays loaded
 uint32_t g_savedPortMask;  // our package's pkg+0x24 while hidden
 std::string g_title, g_status;
 
@@ -174,10 +181,11 @@ void SyncEnabled(uint8_t* w, bool want) {
 }
 
 // Show (slot 5): button rows hide their arrow images (+0x4C/+0x50) again, as the widget's own
-// Hide 0x50D610 does. The highlight scripts only animate colour, so the arrows stay hidden.
+// Hide 0x50D610 does. The highlight scripts only animate colour, so the arrows stay hidden. Disabled rows too (their
+// Disable left them hidden; a scroll shows every widget again).
 void __fastcall ToggleShow(void* w, void*) {
   FEToggleWidget_Show(w, nullptr);
-  if (!IsAction(w)) return;
+  if (!IsAction(w) && !(g_cb.isEnabled && !g_cb.isEnabled(RowId(w)))) return;
   for (int off : {0x4C, 0x50})
     u2::feng::SetInvisible(*reinterpret_cast<u2::feng::FEObject**>(static_cast<uint8_t*>(w) + off));
 }
@@ -196,10 +204,70 @@ void __fastcall ToggleAct(void* w, void*, const char* /*pkg*/, unsigned msg) {
 
 void HideScrollbar(const char* pkg);
 
+// ---- scrolling (more rows than widgets) ---------------------------------------------------------
+// The menu's own scroll bar: the ScrollingThing at menu+0x6C (ctor 0x542AC0 from the UIWidgetMenu ctor 0x5527C1).
+// Update 0x538080 thiscall(first, last, current 1-based) ret 0xC; the base tick calls it for the widgets
+// (0x544490), so after every base message we call it again for the rows. Arrow blink 0x495810 / 0x495850 thiscall()
+// (verified-in-binary.md "Native scroll bar"; car_list.cpp).
+auto ScrollBar_Update = Fn<void(__fastcall*)(void*, void*, int, int, int)>(0x538080);
+auto ScrollBar_BlinkUp = Fn<void(__fastcall*)(void*, void*)>(0x495810);
+auto ScrollBar_BlinkDown = Fn<void(__fastcall*)(void*, void*)>(0x495850);
+uint8_t* Scroller(void* menu) { return static_cast<uint8_t*>(menu) + 0x6C; }
+bool RowEnabled(int id) { return !g_cb.isEnabled || g_cb.isEnabled(id); }
+int SlotOf(void* w) {
+  for (size_t i = 0; i < g_rows.size(); ++i)
+    if (g_rows[i].widget == w) return int(i);
+  return -1;
+}
+
+// Point the widgets at rows top.. and redraw them at once (labels, values, arrows, grey).
+void ShowRowsFrom(int top) {
+  g_top = top;
+  for (size_t i = 0; i < g_rows.size(); ++i) RowId(g_rows[i].widget) = top + int(i);
+  for (auto& r : g_rows) {
+    ToggleShow(r.widget, nullptr);
+    DrawRow(r.widget, true);
+    if (g_cb.isEnabled) SyncEnabled(r.widget, RowEnabled(RowId(r.widget)));
+  }
+}
+
+// PAD_UP / PAD_DOWN when the rows scroll. Returns true when the message is handled here (not passed to the base).
+// The next enabled row in that direction (none: stay, as the game's own list stops at its ends, 0x5391A7). Inside the
+// window the base moves the cursor (it skips disabled widgets, +0x28). Outside, the rows shift so the target lands in
+// the cursor's widget; when the list end stops the shift short, the base then moves the cursor the rest of the way
+// over widgets that now show the disabled rows in between.
+bool ScrollMove(void* self, unsigned msg) {
+  void* cur = *reinterpret_cast<void**>(static_cast<uint8_t*>(self) + 0x54);
+  int slot = SlotOf(cur);
+  if (slot < 0) return false;
+  const int dir = msg == kMsgDown ? 1 : -1, window = int(g_rows.size());
+  int target = -1;
+  for (int r = RowId(cur) + dir; r >= 0 && r < g_rowCount; r += dir)
+    if (RowEnabled(r)) {
+      target = r;
+      break;
+    }
+  if (target < 0) return true;
+  if (target >= g_top && target < g_top + window) return false;
+  int top = (std::max)(0, (std::min)(target - slot, g_rowCount - window));
+  ShowRowsFrom(top);
+  if (dir > 0) ScrollBar_BlinkDown(Scroller(self), nullptr);
+  else ScrollBar_BlinkUp(Scroller(self), nullptr);
+  return target - top == slot;
+}
+
+void UpdateScrollbar(void* self) {
+  const char* pkg = *reinterpret_cast<const char**>(static_cast<uint8_t*>(self) + 4);
+  if (!Scrolls()) return HideScrollbar(pkg);
+  void* cur = *reinterpret_cast<void**>(static_cast<uint8_t*>(self) + 0x54);
+  ScrollBar_Update(Scroller(self), nullptr, 1, g_rowCount, cur ? RowId(cur) + 1 : 1);
+}
+
 // Screen message handler: base UIWidgetMenu first (navigation, LEFT/RIGHT -> row Act, tick).
 void __fastcall MenuNotify(void* self, void*, unsigned msg, void* obj, int p1, int p2) {
-  UIWidgetMenu_Notify(self, nullptr, msg, obj, p1, p2);
-  HideScrollbar(*reinterpret_cast<const char**>(static_cast<uint8_t*>(self) + 4));
+  if (!(Scrolls() && (msg == kMsgUp || msg == kMsgDown) && ScrollMove(self, msg)))
+    UIWidgetMenu_Notify(self, nullptr, msg, obj, p1, p2);
+  UpdateScrollbar(self);
   if (msg == kMsgAccept) {
     void* cur = *reinterpret_cast<void**>(static_cast<uint8_t*>(self) + 0x54);
     if (cur) g_pendingActivate = RowId(cur);
@@ -356,7 +424,7 @@ void PlaceFooter(const char* pkg, float x, float y) {
 }
 
 // The scroll bar is shown again by the base handler every tick (0x544490 -> 0x538080), so this
-// runs after every base message. All rows fit, so it is never needed.
+// runs after every base message while all rows fit (UpdateScrollbar).
 void HideScrollbar(const char* pkg) {
   for (const char* n : {"SCROLLBAR_BACKING", "SCROLLBAR_HANDLE", "SCROLLBAR_ARROW_1", "SCROLLBAR_ARROW_2"})
     HideObject(pkg, n);
@@ -364,8 +432,41 @@ void HideScrollbar(const char* pkg) {
 
 // Called after the UIWidgetMenu ctor (which read the row geometry from TITLE_MASTER/DATA_MASTER,
 // 0x51FF80) and before the rows are added (each row copies these fields, FEStatWidget ctor 0x51E1B0).
-void ApplySidebar(uint8_t* m, const char* pkg, int rows) {
-  *reinterpret_cast<int*>(m + 0x134) = rows;  // visible rows (ctor default 7): everything fits, no scrolling
+auto FEngGetTopLeft = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D070);  // as the ScrollingThing ctor (0x542C1B)
+auto FEngGetSize = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D730);     // (0x542C2C, 0x542C7A)
+
+// The scroll bar along the bar's right edge, beside the rows (native pieces and spacing: arrows 23 beyond the backing's
+// ends, the corner caps 4 beyond, as in the package and UI_PC_Customize_Options). The ScrollingThing read the
+// backing's top-left and size and the handle's size once in its ctor, before this move, so they are read again the
+// same way.
+void PlaceScrollbar(uint8_t* m, const char* pkg, float x, float top, float bottom) {
+  uint8_t* back = Obj(pkg, "SCROLLBAR_BACKING");
+  uint8_t* handle = Obj(pkg, "SCROLLBAR_HANDLE");
+  uint8_t* up = Obj(pkg, "SCROLLBAR_ARROW_1");
+  uint8_t* down = Obj(pkg, "SCROLLBAR_ARROW_2");
+  uint8_t* nig = Obj(pkg, "NON_INTERACTIVE_GROUP ");
+  if (!back || !handle || !up || !down || !nig) return;
+  const float upY = top + 12, downY = bottom - 12, backT = upY + 23, backB = downY - 23;
+  SetGeometry(up, x, upY, Size(up)[0], Size(up)[1]);
+  SetGeometry(down, x, downY, Size(down)[0], Size(down)[1]);
+  SetGeometry(back, x, (backT + backB) / 2, Size(back)[0], backB - backT);
+  SetGeometry(handle, x, backT, Size(handle)[0], Size(handle)[1]);
+  const float nx = Pos(nig)[0], ny = Pos(nig)[1];
+  if (uint8_t* c = Obj(pkg, "U2_SCROLLER_CORNER")) SetGeometry(c, x - nx, backT - 4 - ny, Size(c)[0], Size(c)[1]);
+  if (uint8_t* c = Obj(pkg, "U2_SCROLLER_CORNER(65)")) SetGeometry(c, x - nx, backB + 4 - ny, Size(c)[0], Size(c)[1]);
+  uint8_t* s = Scroller(m);
+  void* sBack = *reinterpret_cast<void**>(s + 0x40);
+  void* sHandle = *reinterpret_cast<void**>(s + 0x44);
+  if (sBack) {
+    FEngGetTopLeft(sBack, reinterpret_cast<float*>(s + 0x1C), reinterpret_cast<float*>(s + 0x20));
+    FEngGetSize(sBack, reinterpret_cast<float*>(s + 0x24), reinterpret_cast<float*>(s + 0x28));
+  }
+  if (sHandle) FEngGetSize(sHandle, reinterpret_cast<float*>(s + 0x2C), reinterpret_cast<float*>(s + 0x30));
+}
+
+// rows: widgets (at most kMaxRows); scrolls: more rows than that, so the scroll bar takes the right edge.
+void ApplySidebar(uint8_t* m, const char* pkg, int rows, bool scrolls) {
+  *reinterpret_cast<int*>(m + 0x134) = rows;  // visible widgets (ctor default 7): all of them; we scroll the rows
   // The group's real name ends with a space: hash 0x8D7E0C53 (FEngLib decode and the nfsu2-re
   // runtime object dump of UI_PauseOptionsMain.fng, docs.txt).
   uint8_t* nig = Obj(pkg, "NON_INTERACTIVE_GROUP ");
@@ -391,7 +492,10 @@ void ApplySidebar(uint8_t* m, const char* pkg, int rows) {
   // row, +0x104 row width, +0x10C max title size, +0x114 max data size, +0x11C/+0x120 data top-left.
   // The arrows sit just outside the data column (toggle Position 0x52DAC0).
   auto f = [m](int off) -> float& { return *reinterpret_cast<float*>(m + off); };
-  constexpr float kArrow = 24, kRightPad = 16;  // arrow image width (JSON), gap to the bar edge
+  constexpr float kArrow = 24;  // arrow image width (JSON)
+  // Gap to the bar edge; with a scroll bar it sits in a column of its own there (its arrows are 24 wide).
+  constexpr float kScrollX = 26;  // scroll bar centre, from the bar's right edge
+  const float kRightPad = scrolls ? 48.f : 16.f;
   // Rows end inside the inner panel (SMALLER MENU BACKING ends 32 above the outer frame) with a
   // small gap; shrink the step if they don't fit. The row step is +0x108 plus the spacing +0x128
   // (0x54F0BF), which the ctor sets to 0 (0x5528C2).
@@ -414,8 +518,12 @@ void ApplySidebar(uint8_t* m, const char* pkg, int rows) {
       std::snprintf(name, sizeof name, part, i);
       HideObject(pkg, name);
     }
-  for (const char* n : {"U2_SCROLLER_CORNER", "U2_SCROLLER_CORNER(65)"}) HideObject(pkg, n);
-  HideScrollbar(pkg);
+  if (scrolls) {
+    PlaceScrollbar(m, pkg, bar.r - kScrollX, startY, startY + rows * f(0x108));
+  } else {
+    for (const char* n : {"U2_SCROLLER_CORNER", "U2_SCROLLER_CORNER(65)"}) HideObject(pkg, n);
+    HideScrollbar(pkg);
+  }
   // The tip sits in the strip between the inner panel (ends 32 above the outer frame) and the frame, left-aligned with
   // the row labels. Its top 28 above the frame centres the glyphs in the strip ([game] 2026-10-19 F12 at 1080p: with
   // 25 the text ran 999..1027 px in a 971..1041 px strip, 3 units low).
@@ -435,7 +543,9 @@ void* __cdecl Factory(void* showData) {
   auto m = static_cast<uint8_t*>(menu);
   const char* pkg = *reinterpret_cast<const char**>(m + 4);
   int n = g_cb.rowCount < kMaxRows ? g_cb.rowCount : kMaxRows;
-  ApplySidebar(m, pkg, n);
+  g_rowCount = g_cb.rowCount;
+  g_top = 0;
+  ApplySidebar(m, pkg, n, g_rowCount > n);
 
   u2::feng::Print(pkg, u2::feng::HashUpper("Header_text"), g_title.c_str());
   u2::feng::Print(pkg, u2::feng::HashUpper("Header_text2"), g_status.c_str());
@@ -454,7 +564,7 @@ void* __cdecl Factory(void* showData) {
   UIWidgetMenu_SetInitialOption(menu, nullptr, 0);
   ApplyBacking(pkg);
   g_menu = menu;
-  U2LOG("menu: built native screen %p with %zu rows", menu, g_rows.size());
+  U2LOG("menu: built native screen %p with %zu row widgets for %d rows", menu, g_rows.size(), g_rowCount);
   return menu;
 }
 }  // namespace
@@ -552,9 +662,17 @@ void SetHidden(bool hidden) {
 
 bool IsHidden() { return g_open && g_hidden; }
 
+void SetGameInput(bool on) {
+  if (!g_open || on == g_gameInput) return;
+  g_gameInput = on;
+  SetMenuKeyboardMap(on ? static_cast<char>(g_savedKeyboardMap) : 1);
+  U2LOG("menu: %s keyboard map", on ? "game" : "menu");
+}
+
 void Close() {
   if (!g_open) return;
   SetHidden(false);
+  g_gameInput = false;
   FEngSetLastButton(kPkg, 0);
   RemoveFngAndJoyHandlers(kPkg);
   // The joy handlers are global, not per package: if another screen needs them (registered
