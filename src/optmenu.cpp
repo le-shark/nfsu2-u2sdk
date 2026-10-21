@@ -39,6 +39,10 @@ auto FEToggleWidget_ctor = Fn<void*(__fastcall*)(void*, void*, float*, float*, f
 auto FEToggleWidget_Show = Fn<void(__fastcall*)(void*, void*)>(0x50D5D0);  // FEngSetVisible on title, data, arrows, backing
 auto FEToggleWidget_BlinkArrows = Fn<void(__fastcall*)(void*, void*, unsigned)>(0x51E6B0);
 auto FEngPrintf = Fn<void(__cdecl*)(void*, const char*, ...)>(0x537BE0);               // Unlimiter InGameFunctions.h:135
+// An FEString's size is its current text measured in its own font times its Size scale, in FE canvas units, the units
+// of the data column width (0x51D76F..0x51D7B2; verified-in-binary.md "FE text measuring"). Also the ScrollingThing
+// ctor's call (0x542C2C, 0x542C7A).
+auto FEngGetSize = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D730);
 auto AddFngToUIObject_1 = Fn<void(__cdecl*)(const char*, void*)>(0x555E80);            // push + AddJoyHandlers
 auto RemoveFngAndJoyHandlers = Fn<void(__cdecl*)(const char*)>(0x558F00);              // what the game pairs with it
 // Registers the FE joy handlers unless [0x8384B8] says they already are; thiscall(pUIData), as
@@ -117,6 +121,26 @@ Row* FindRow(void* w) {
   return nullptr;
 }
 
+// A value wider than the data column ends in "..." (user 2026-10-21: long watermark names). The game draws a value
+// centred on the column with no clipping, so a wider one runs over the arrows (0x52D800, 0x51C110), and it has no
+// ellipsis of its own. Each try is printed and measured with the string's own font and scale (FEngGetSize); the
+// OPTION_DATA_n buffers hold 31 characters (FEPrintf cuts there, 0x537B56), so no try is longer.
+void PrintFitted(void* s, const std::string& value) {
+  constexpr size_t kMaxChars = 31;
+  for (size_t n = value.size();; --n) {
+    std::string t = value.substr(0, n);
+    if (n < value.size()) {
+      while (!t.empty() && t.back() == ' ') t.pop_back();
+      t += "...";
+    }
+    if (t.size() > kMaxChars && n > 0) continue;
+    FEngPrintf(s, "%s", t.c_str());
+    float tw = 0, th = 0;  // stays 0 when the font is missing
+    FEngGetSize(s, &tw, &th);
+    if (tw <= g_layout.valueWidth || n == 0) return;
+  }
+}
+
 // Draw: write label and value into the row's OPTION_NAME_n / OPTION_DATA_n strings.
 void DrawRow(void* w, bool force) {
   int id = RowId(w);
@@ -124,7 +148,7 @@ void DrawRow(void* w, bool force) {
   Row* r = FindRow(w);
   if (r && !force && r->label == label && r->value == value) return;
   if (LabelString(w)) FEngPrintf(LabelString(w), "%s", label.c_str());
-  if (ValueString(w)) FEngPrintf(ValueString(w), "%s", value.c_str());
+  if (ValueString(w)) PrintFitted(ValueString(w), value);
   if (r) {
     r->label = label;
     r->value = value;
@@ -464,7 +488,6 @@ void HideScrollbar(const char* pkg) {
 // Called after the UIWidgetMenu ctor (which read the row geometry from TITLE_MASTER/DATA_MASTER,
 // 0x51FF80) and before the rows are added (each row copies these fields, FEStatWidget ctor 0x51E1B0).
 auto FEngGetTopLeft = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D070);  // as the ScrollingThing ctor (0x542C1B)
-auto FEngGetSize = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D730);     // (0x542C2C, 0x542C7A)
 
 // The scroll bar along the bar's right edge, beside the rows (native pieces and spacing: arrows 23 beyond the backing's
 // ends, the corner caps 4 beyond, as in the package and UI_PC_Customize_Options). The ScrollingThing read the
