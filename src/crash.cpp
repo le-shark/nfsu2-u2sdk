@@ -139,6 +139,8 @@ DWORD WINAPI ArmThreads(LPVOID p) {
     CloseHandle(t);
   }
   CloseHandle(snap);
+  U2LOG("watch %s [%08X]: write breakpoint in %d threads (%d had breakpoint 0 in use)", g_watchName,
+        static_cast<unsigned>(g_watchAddr), job->armed, job->busy);
   return 0;
 }
 }  // namespace
@@ -176,17 +178,16 @@ bool WatchWrites(uintptr_t addr, const char* name) {
   g_watchAddr = addr;
   g_watchName = name;
   AddVectoredExceptionHandler(1, WatchHandler);
-  ArmJob job{};
+  // The caller does not wait (measured 2026-10-21: waiting held the main thread about 50 ms with 61 threads); each
+  // thread, the caller included, is only stopped for its own turn. The helper logs the result when done.
+  static ArmJob job;
   HANDLE h = CreateThread(nullptr, 0, ArmThreads, &job, CREATE_SUSPENDED, &job.self);
   if (!h) {
     U2LOG("watch %s: no helper thread (%lu)", name, GetLastError());
     return false;
   }
   ResumeThread(h);
-  WaitForSingleObject(h, INFINITE);  // job lives on this stack
   CloseHandle(h);
-  U2LOG("watch %s [%08X]: write breakpoint in %d threads (%d had breakpoint 0 in use)", name,
-        static_cast<unsigned>(addr), job.armed, job.busy);
-  return job.armed > 0;
+  return true;
 }
 }  // namespace u2::crash

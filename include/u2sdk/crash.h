@@ -13,6 +13,7 @@ void LogModules();
 
 // A hardware write breakpoint (debug register 0, 4 bytes) on addr in every thread running now: each write logs
 // the writing instruction (module+offset) and a call trail, at most a few times. Threads started later are not
-// covered. Diagnostics only (2026-10-21, a tester's shader-reload crash): call it from the game's main thread.
+// covered. Diagnostics only (2026-10-21, a tester's shader-reload crash). Returns at once; a helper thread arms the
+// threads one by one and logs how many.
 bool WatchWrites(uintptr_t addr, const char* name);
 }  // namespace u2::crash
