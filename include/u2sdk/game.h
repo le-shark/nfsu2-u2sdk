@@ -60,6 +60,12 @@ constexpr uintptr_t FullTexture1 = 0x86EB8C;         // bleach (0x5C6AA4) and th
 constexpr uintptr_t FullSurface0 = 0x86EB0C;         // which copy them back over [0x870850]; surfaces [0], [1]
 constexpr uintptr_t FullSurface1 = 0x86EB10;
 constexpr uintptr_t FsaaLevel = 0x870D08;            // int g_FSAALevel; the streak pass uses the MSAA RT when > 0
+// int screen width / height (written 0x5B9B49); the bleach pass's half-texel UV offset reads them (0x5C6557, 0x5C65F4)
+constexpr uintptr_t ScreenWidth = 0x870980;
+constexpr uintptr_t ScreenHeight = 0x870984;
+// Bleach (Enhanced Contrast) full-screen pass: cdecl, 7 dword args (callers add esp 0x1C each, 0x5C6AC2), plain ret
+// 0x5C68C9; only called from the bleach function 0x5C68D0 (0x5C6A75..0x5C6BD6).
+constexpr uintptr_t BleachQuadPass = 0x5C6520;
                                                      // (0x5CBB1C, 0x5CBB96, 0x5CBCAC, 0x5C6C0F)
 constexpr uintptr_t EffectReloadRequest = 0x8707C4;  // int: non-zero makes RenderFrame reload every effect
                                                      // (0x5D2BFA -> 0x5D21F0, then 0). No game code writes it
