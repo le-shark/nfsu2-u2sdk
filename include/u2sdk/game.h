@@ -61,6 +61,8 @@ constexpr uintptr_t FullSurface0 = 0x86EB0C;         // which copy them back ove
 constexpr uintptr_t FullSurface1 = 0x86EB10;
 constexpr uintptr_t FsaaLevel = 0x870D08;            // int g_FSAALevel; the streak pass uses the MSAA RT when > 0
                                                      // (0x5CBB1C, 0x5CBB96, 0x5CBCAC, 0x5C6C0F)
+constexpr uintptr_t EffectReloadRequest = 0x8707C4;  // int: non-zero makes RenderFrame reload every effect
+                                                     // (0x5D2BFA -> 0x5D21F0, then 0). No game code writes it
 constexpr uintptr_t MirrorOverride = 0x8707E4;       // int: 0x5C21E0 uses it instead of 0x8707DC when non-zero;
                                                      // 1 = rear-view mirror view 3 off. No game code writes it
 // --- functions
