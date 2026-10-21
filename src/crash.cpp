@@ -90,7 +90,8 @@ LONG g_watchLogged = 0;
 
 // The CPU raises a single-step exception after the watched write; DR6 bit 0 says breakpoint 0 fired.
 LONG CALLBACK WatchHandler(EXCEPTION_POINTERS* ep) {
-  if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !g_watchAddr || !(ep->ContextRecord->Dr6 & 1))
+  if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !g_watchAddr || !(ep->ContextRecord->Dr6 & 1) ||
+      ep->ContextRecord->Dr0 != g_watchAddr)  // breakpoint 0 taken over by another tool: theirs
     return EXCEPTION_CONTINUE_SEARCH;
   CONTEXT* c = ep->ContextRecord;
   c->Dr6 &= ~0xFu;
