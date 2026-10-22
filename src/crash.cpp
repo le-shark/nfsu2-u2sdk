@@ -2,7 +2,6 @@
 
 #include <windows.h>
 #include <psapi.h>
-#include <tlhelp32.h>
 
 #include "u2sdk/log.h"
 
@@ -80,66 +79,6 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS* ep) {
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// ---- write watch --------------------------------------------------------------------------------
-uintptr_t g_watchAddr = 0;
-const char* g_watchName = "";
-LONG g_watchLogged = 0;
-
-// The CPU raises a single-step exception after the watched write; DR6 bit 0 says breakpoint 0 fired.
-LONG CALLBACK WatchHandler(EXCEPTION_POINTERS* ep) {
-  if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !g_watchAddr || !(ep->ContextRecord->Dr6 & 1) ||
-      ep->ContextRecord->Dr0 != g_watchAddr)  // breakpoint 0 taken over by another tool: theirs
-    return EXCEPTION_CONTINUE_SEARCH;
-  CONTEXT* c = ep->ContextRecord;
-  c->Dr6 &= ~0xFu;
-  if (InterlockedIncrement(&g_watchLogged) <= 6) {
-    char where[300];
-    Where(c->Eip, where, sizeof where);
-    U2LOG("WRITE %s [%08X] = %u by the instruction before %s (EIP %08X), thread %lu", g_watchName,
-          static_cast<unsigned>(g_watchAddr), *reinterpret_cast<const volatile uint32_t*>(g_watchAddr), where, c->Eip,
-          GetCurrentThreadId());
-    Trail(reinterpret_cast<const uintptr_t*>(c->Esp), 0);
-  }
-  return EXCEPTION_CONTINUE_EXECUTION;
-}
-
-struct ArmJob {
-  DWORD self;  // the helper thread: no breakpoint there
-  int armed = 0, busy = 0;
-};
-
-// Debug registers of another thread can only be set while it is suspended, so a helper thread does it for every
-// thread of the process, the caller included.
-DWORD WINAPI ArmThreads(LPVOID p) {
-  auto* job = static_cast<ArmJob*>(p);
-  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-  if (snap == INVALID_HANDLE_VALUE) return 0;
-  THREADENTRY32 te{sizeof te};
-  for (BOOL more = Thread32First(snap, &te); more; more = Thread32Next(snap, &te)) {
-    if (te.th32OwnerProcessID != GetCurrentProcessId() || te.th32ThreadID == job->self) continue;
-    HANDLE t = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, te.th32ThreadID);
-    if (!t) continue;
-    if (SuspendThread(t) != static_cast<DWORD>(-1)) {
-      CONTEXT c{};
-      c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-      if (GetThreadContext(t, &c)) {
-        if (c.Dr7 & 3) {
-          ++job->busy;  // breakpoint 0 already used by someone else: leave it
-        } else {
-          c.Dr0 = g_watchAddr;
-          c.Dr7 = (c.Dr7 & ~0xF0000u) | 1u | (1u << 16) | (3u << 18);  // local enable, break on write, 4 bytes
-          if (SetThreadContext(t, &c)) ++job->armed;
-        }
-      }
-      ResumeThread(t);
-    }
-    CloseHandle(t);
-  }
-  CloseHandle(snap);
-  U2LOG("watch %s [%08X]: write breakpoint in %d threads (%d had breakpoint 0 in use)", g_watchName,
-        static_cast<unsigned>(g_watchAddr), job->armed, job->busy);
-  return 0;
-}
 }  // namespace
 
 void InstallLogger() { AddVectoredExceptionHandler(1, Handler); }
@@ -175,21 +114,4 @@ void LogModules() {
   U2LOG("modules: %d outside %s", n, winDir);
 }
 
-bool WatchWrites(uintptr_t addr, const char* name) {
-  if (g_watchAddr) return false;
-  g_watchAddr = addr;
-  g_watchName = name;
-  AddVectoredExceptionHandler(1, WatchHandler);
-  // The caller does not wait (measured 2026-10-21: waiting held the main thread about 50 ms with 61 threads); each
-  // thread, the caller included, is only stopped for its own turn. The helper logs the result when done.
-  static ArmJob job;
-  HANDLE h = CreateThread(nullptr, 0, ArmThreads, &job, CREATE_SUSPENDED, &job.self);
-  if (!h) {
-    U2LOG("watch %s: no helper thread (%lu)", name, GetLastError());
-    return false;
-  }
-  ResumeThread(h);
-  CloseHandle(h);
-  return true;
-}
 }  // namespace u2::crash
