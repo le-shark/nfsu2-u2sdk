@@ -102,8 +102,9 @@ uint8_t g_savedKeyboardMap = 0;
 bool g_joyHandlersWereOn = false;
 bool g_pendingBack = false;
 bool g_hidden = false;
+bool g_inputBlocked = false;  // SetInputBlocked
 bool g_gameInput = false;  // SetGameInput: the keyboard map saved at Open is back while the menu stays loaded
-uint32_t g_savedPortMask;  // our package's pkg+0x24 while hidden
+uint32_t g_savedPortMask;  // our package's pkg+0x24 while hidden or input-blocked
 std::string g_title, g_status;
 
 void* g_menuVtbl[5];
@@ -696,18 +697,29 @@ bool Open() {
 
 // The FE skips a package's pad/keyboard input entirely when its port mask pkg+0x24 is 0
 // (ProcessPadsForPackage 0x54D4B0, check at 0x54D4BC; docs/kb/fe-input.md).
-void SetHidden(bool hidden) {
-  if (!g_open || hidden == g_hidden) return;
-  if (auto p = reinterpret_cast<uint8_t*>(u2::feng::FindPackage(kPkg))) {
-    auto& mask = *reinterpret_cast<uint32_t*>(p + 0x24);
-    if (hidden) {
-      g_savedPortMask = mask;
-      mask = 0;
-    } else {
-      mask = g_savedPortMask;
+// Hidden or input-blocked: the mask is 0; both off: the saved one is back.
+void SetPortMask(bool hidden, bool blocked) {
+  const bool wasOff = g_hidden || g_inputBlocked, off = hidden || blocked;
+  if (wasOff != off)
+    if (auto p = reinterpret_cast<uint8_t*>(u2::feng::FindPackage(kPkg))) {
+      auto& mask = *reinterpret_cast<uint32_t*>(p + 0x24);
+      if (off) {
+        g_savedPortMask = mask;
+        mask = 0;
+      } else {
+        mask = g_savedPortMask;
+      }
     }
-  }
   g_hidden = hidden;
+  g_inputBlocked = blocked;
+}
+
+void SetHidden(bool hidden) {
+  if (g_open && hidden != g_hidden) SetPortMask(hidden, g_inputBlocked);
+}
+
+void SetInputBlocked(bool blocked) {
+  if (g_open && blocked != g_inputBlocked) SetPortMask(g_hidden, blocked);
 }
 
 bool IsHidden() { return g_open && g_hidden; }
@@ -721,7 +733,7 @@ void SetGameInput(bool on) {
 
 void Close() {
   if (!g_open) return;
-  SetHidden(false);
+  SetPortMask(false, false);
   g_gameInput = false;
   FEngSetLastButton(kPkg, 0);
   RemoveFngAndJoyHandlers(kPkg);

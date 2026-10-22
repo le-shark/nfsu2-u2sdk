@@ -59,6 +59,10 @@ bool IsOpen();
 // not drawn (see IsHidden) and takes no input.
 void SetHidden(bool hidden);
 bool IsHidden();
+// Shown but taking no pad / keyboard input (same port mask as SetHidden). A Back the screen receives starts the
+// package's own fade-out of every row (verified-in-binary.md "PAD_BACK fades the whole UI_PauseOptions screen"), so
+// block input while a key the owner handles itself (photo mode's Esc that cancels a capture) must not reach it.
+void SetInputBlocked(bool blocked);
 // The game's own keyboard map (the one in use before Open) while the menu stays loaded, e.g. to drive; false = the
 // menu map again. Hide the menu meanwhile (SetHidden) so it takes no pad input.
 void SetGameInput(bool on);
