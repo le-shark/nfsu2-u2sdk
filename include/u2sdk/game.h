@@ -60,11 +60,19 @@ constexpr uintptr_t FullTexture1 = 0x86EB8C;         // bleach (0x5C6AA4) and th
 constexpr uintptr_t FullSurface0 = 0x86EB0C;         // which copy them back over [0x870850]; surfaces [0], [1]
 constexpr uintptr_t FullSurface1 = 0x86EB10;
 constexpr uintptr_t FsaaLevel = 0x870D08;            // int g_FSAALevel; the streak pass uses the MSAA RT when > 0
+// In-world players by number (0x8900AC player 0, 0x8900B0 player 1); +8 the port, +0x50 the finish tick (0x5F1808,
+// 0x5EA530; verified-in-binary.md "Pause menu icons").
+constexpr uintptr_t PlayersByNumber = 0x8900AC;
+// Showcase key-map bytes: the map selector 0x5CFBF0 picks format 2 (driving keys only) when [0x836352] && ![0x836353]
+// (0x5CFC70..0x5CFC80), format 3 when both are set (0x5CFCBB..0x5CFCCB); 0x836353 is set by the Showcase D-pad screen
+// (0x4B5E6A) and cleared at 0x4B5C10.
+constexpr uintptr_t ShowcaseKeys = 0x836352;
+constexpr uintptr_t ShowcaseDpad = 0x836353;
 // int screen width / height (written 0x5B9B49); the bleach pass's half-texel UV offset reads them (0x5C6557, 0x5C65F4)
 constexpr uintptr_t ScreenWidth = 0x870980;
 constexpr uintptr_t ScreenHeight = 0x870984;
-// Bleach (Enhanced Contrast) full-screen pass: cdecl, 7 dword args (callers add esp 0x1C each, 0x5C6AC2), plain ret
-// 0x5C68C9; only called from the bleach function 0x5C68D0 (0x5C6A75..0x5C6BD6).
+// Bleach (Enhanced Contrast) full-screen pass: cdecl, 7 dword args (three calls cleaned up together by add esp, 0x54 at
+// 0x5C6AC2, 3 x 0x1C), plain ret 0x5C68C9; only called from the bleach function 0x5C68D0 (0x5C6A75..0x5C6BD6).
 constexpr uintptr_t BleachQuadPass = 0x5C6520;
                                                      // (0x5CBB1C, 0x5CBB96, 0x5CBCAC, 0x5C6C0F)
 constexpr uintptr_t EffectReloadRequest = 0x8707C4;  // int: non-zero makes RenderFrame reload every effect

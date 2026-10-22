@@ -124,21 +124,14 @@ Row* FindRow(void* w) {
 // A value wider than the data column ends in "..." (user 2026-10-21: long watermark names). The game draws a value
 // centred on the column with no clipping, so a wider one runs over the arrows (0x52D800, 0x51C110), and it has no
 // ellipsis of its own. Each try is printed and measured with the string's own font and scale (FEngGetSize); the
-// OPTION_DATA_n buffers hold 31 characters (FEPrintf cuts there, 0x537B56), so no try is longer.
+// OPTION_DATA_n buffers hold 31 characters (FEPrintf cuts there, 0x537B56), so no try is longer (FitText, unit-tested).
 void PrintFitted(void* s, const std::string& value) {
-  constexpr size_t kMaxChars = 31;
-  for (size_t n = value.size();; --n) {
-    std::string t = value.substr(0, n);
-    if (n < value.size()) {
-      while (!t.empty() && t.back() == ' ') t.pop_back();
-      t += "...";
-    }
-    if (t.size() > kMaxChars && n > 0) continue;
+  FitText(value, kValueChars, [s](const std::string& t) {
     FEngPrintf(s, "%s", t.c_str());
     float tw = 0, th = 0;  // stays 0 when the font is missing
     FEngGetSize(s, &tw, &th);
-    if (tw <= g_layout.valueWidth || n == 0) return;
-  }
+    return tw <= g_layout.valueWidth;
+  });
 }
 
 // Draw: write label and value into the row's OPTION_NAME_n / OPTION_DATA_n strings.
@@ -500,6 +493,8 @@ void PlaceScrollbar(uint8_t* m, const char* pkg, float x, float top, float botto
   uint8_t* down = Obj(pkg, "SCROLLBAR_ARROW_2");
   uint8_t* nig = Obj(pkg, "NON_INTERACTIVE_GROUP ");
   if (!back || !handle || !up || !down || !nig) return;
+  // Positions are centres; the arrows are 24 x 24 (INIT Size, refs/data/UI_PauseOptions.json), so +-12 puts their
+  // outer edges on the rows' top and bottom.
   const float upY = top + 12, downY = bottom - 12, backT = upY + 23, backB = downY - 23;
   SetGeometry(up, x, upY, Size(up)[0], Size(up)[1]);
   SetGeometry(down, x, downY, Size(down)[0], Size(down)[1]);
@@ -547,16 +542,17 @@ void ApplySidebar(uint8_t* m, const char* pkg, int rows, bool scrolls) {
   // The arrows sit just outside the data column (toggle Position 0x52DAC0).
   auto f = [m](int off) -> float& { return *reinterpret_cast<float*>(m + off); };
   constexpr float kArrow = 24;  // arrow image width (JSON)
-  // Gap to the bar edge; with a scroll bar it sits in a column of its own there (its arrows are 24 wide).
+  // Gap to the bar edge: 16, plus a 32-unit column for the scroll bar when there is one (its arrows are 24 wide).
   constexpr float kScrollX = 26;  // scroll bar centre, from the bar's right edge
-  const float kRightPad = scrolls ? 48.f : 16.f;
+  constexpr float kEdgeGap = 16, kScrollColumn = 32;
+  const float rightPad = kEdgeGap + (scrolls ? kScrollColumn : 0);
   // Rows end inside the inner panel (SMALLER MENU BACKING ends 32 above the outer frame) with a
   // small gap; shrink the step if they don't fit. The row step is +0x108 plus the spacing +0x128
   // (0x54F0BF), which the ctor sets to 0 (0x5528C2).
   const float rowsBottom = bar.b - 38;
   float startX = f(0xF4) + dxL, startY = f(0xF8) + dyT;
   if (rows > 0) f(0x108) = (std::min)(f(0x108), std::floor((rowsBottom - startY) / rows));
-  float dataW = g_layout.valueWidth, dataX = bar.r - kRightPad - kArrow - dataW;
+  float dataW = g_layout.valueWidth, dataX = bar.r - rightPad - kArrow - dataW;
   f(0xF4) = f(0xFC) = startX;
   f(0xF8) = f(0x100) = startY;
   f(0x11C) = dataX;

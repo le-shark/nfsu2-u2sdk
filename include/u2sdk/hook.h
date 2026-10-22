@@ -4,9 +4,18 @@
 //
 // Hooking a __thiscall game function: declare the detour as __fastcall(this, edx, args...)
 // and the original pointer type the same way; call the original as orig(self, edx, args...).
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace u2::hook {
+
+// Entry-byte check before hooking: the expected bytes (from u2re), or a leading JMP when another of our ASIs (or
+// another MinHook user) hooked the same function first; MinHook chains onto that (lessons.md section 1).
+inline bool EntryIs(uintptr_t at, const char* expect, size_t n) {
+  const auto* p = reinterpret_cast<const unsigned char*>(at);
+  return *p == 0xE9 || std::memcmp(p, expect, n) == 0;
+}
 
 bool Init();
 bool Create(uintptr_t target, void* detour, void** original, const char* name);

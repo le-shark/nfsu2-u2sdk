@@ -9,9 +9,6 @@
 namespace u2::crash {
 namespace {
 LONG g_logged = 0;
-}  // namespace
-void LogModules();
-namespace {
 
 void Where(uintptr_t a, char* out, size_t n) {
   HMODULE m = nullptr;
@@ -112,7 +109,7 @@ struct ArmJob {
 };
 
 // Debug registers of another thread can only be set while it is suspended, so a helper thread does it for every
-// thread of the process, the caller included (the caller waits on the helper meanwhile).
+// thread of the process, the caller included.
 DWORD WINAPI ArmThreads(LPVOID p) {
   auto* job = static_cast<ArmJob*>(p);
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
@@ -147,10 +144,12 @@ DWORD WINAPI ArmThreads(LPVOID p) {
 
 void InstallLogger() { AddVectoredExceptionHandler(1, Handler); }
 
-// No heap and no snapshot (the heap may be the thing that broke): the module list from the PEB into a static array.
+// No heap (it may be the thing that broke): K32EnumProcessModules into a stack array (about 2.5 KB; the stack-overflow
+// case never gets here), so the first-frame call and one from the crash handler on another thread share nothing.
+// GetModuleFileNameA takes the loader lock: a crash while another thread holds it can stall this list (rare).
 void LogModules() {
-  static HMODULE mods[512];
-  static char winDir[MAX_PATH], path[MAX_PATH];
+  HMODULE mods[512];
+  char winDir[MAX_PATH], path[MAX_PATH];
   const UINT winLen = GetWindowsDirectoryA(winDir, MAX_PATH);
   DWORD bytes = 0;
   if (!K32EnumProcessModules(GetCurrentProcess(), mods, sizeof mods, &bytes)) {

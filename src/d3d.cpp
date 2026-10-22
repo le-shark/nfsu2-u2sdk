@@ -25,6 +25,14 @@ int __cdecl ResetHandlerDetour() {
 }
 }  // namespace
 
+bool BackBufferDesc(IDirect3DDevice9* dev, D3DSURFACE_DESC* out) {
+  IDirect3DSurface9* bb = nullptr;
+  if (!dev || FAILED(dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return false;
+  const bool ok = SUCCEEDED(bb->GetDesc(out));
+  bb->Release();
+  return ok;
+}
+
 bool HookDeviceMethod(int index, void* detour, void** original, const char* name) {
   IDirect3DDevice9* dev = Device();
   if (!dev) return false;

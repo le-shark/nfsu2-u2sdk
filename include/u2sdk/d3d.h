@@ -2,8 +2,12 @@
 // Direct3D 9 helpers: hooking device methods (by vtable index, via MinHook on the d3d9.dll
 // implementation) and getting told when the game is about to Reset the device.
 struct IDirect3DDevice9;
+struct _D3DSURFACE_DESC;
 
 namespace u2::d3d {
+
+// The backbuffer's description (size, format, MultiSampleType: in-game FSAA). False when it can't be read.
+bool BackBufferDesc(IDirect3DDevice9* dev, _D3DSURFACE_DESC* out);
 
 namespace vt {
 constexpr int Present = 17;

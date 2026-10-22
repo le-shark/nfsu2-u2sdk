@@ -6,6 +6,7 @@
 // builds custom screens (LanguageSelectScreen.h: own factory in the FNGData table + own vtable) and
 // NFSU2Unlimiter builds widget rows (BuyPerformanceParts.h: UIWidgetMenu + FEStatWidget, custom
 // widget vtables, FEngPrintf on the row labels). Addresses/semantics: docs/kb/native-screen.md.
+#include <cstddef>
 #include <string>
 
 namespace u2::optmenu {
@@ -63,5 +64,23 @@ bool IsHidden();
 void SetGameInput(bool on);
 void Tick();                                     // every frame, even when photo mode is off
 void Update(const std::string& title, const std::string& status);  // per frame: redraw, run deferred actions
+
+// A row value's characters at most (OPTION_DATA_n BufferLength 32; FEPrintf cuts there, 0x537B56).
+constexpr size_t kValueChars = 31;
+// Long values end in "..." (user 2026-10-21): the whole text when fits(text), else the longest start of it (trailing
+// spaces dropped) plus "..." that fits; tries are never longer than maxChars. fits is called for each try, longest
+// first, and the last try (a lone "...") is taken whatever fits says. Returns the text taken.
+template <typename Fits>
+std::string FitText(const std::string& value, size_t maxChars, Fits fits) {
+  for (size_t n = value.size();; --n) {
+    std::string t = value.substr(0, n);
+    if (n < value.size()) {
+      while (!t.empty() && t.back() == ' ') t.pop_back();
+      t += "...";
+    }
+    if (t.size() > maxChars && n > 0) continue;
+    if (fits(t) || n == 0) return t;
+  }
+}
 
 }  // namespace u2::optmenu
