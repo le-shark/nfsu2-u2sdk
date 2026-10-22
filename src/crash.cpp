@@ -166,7 +166,10 @@ void LogModules() {
     SYSTEMTIME st;
     if (GetFileAttributesExA(path, GetFileExInfoStandard, &fa) && FileTimeToSystemTime(&fa.ftLastWriteTime, &st))
       _snprintf_s(date, sizeof date, _TRUNCATE, "%04u-%02u-%02u", st.wYear, st.wMonth, st.wDay);
-    U2LOG("module %s (%lu KB, %s)", path, fa.nFileSizeLow / 1024, date);
+    // The load address decodes crash addresses inside the module and its patches (2026-10-22: HD Reflections' jump
+    // bytes depend on it).
+    U2LOG("module %s at %08X (%lu KB, %s)", path, static_cast<unsigned>(reinterpret_cast<uintptr_t>(mods[i])),
+          fa.nFileSizeLow / 1024, date);
     ++n;
   }
   U2LOG("modules: %d outside %s", n, winDir);
