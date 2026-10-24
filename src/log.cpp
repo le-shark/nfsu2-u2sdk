@@ -35,7 +35,11 @@ void Init() {
   if (g_init) return;
   InitializeCriticalSection(&g_cs);
   g_init = true;
-  g_file = std::fopen((ModuleDir() + ModuleName() + ".log").c_str(), "w");
+  // The previous session's log is kept as <name>.prev.log (2026-10-24: a crash's CRASH lines were lost when the game
+  // was started again and the log rewritten).
+  std::string base = ModuleDir() + ModuleName();
+  MoveFileExA((base + ".log").c_str(), (base + ".prev.log").c_str(), MOVEFILE_REPLACE_EXISTING);
+  g_file = std::fopen((base + ".log").c_str(), "w");
 }
 
 void Write(const char* fmt, ...) {
