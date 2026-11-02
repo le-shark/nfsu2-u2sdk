@@ -1,5 +1,8 @@
 #include "test.h"
+#include "u2sdk/fngchunk.h"
 #include "u2sdk/u2math.h"
+
+#include <cstring>
 
 using namespace u2;
 
@@ -149,4 +152,28 @@ TEST(IntHelpers) {
   CHECK(u2::Wrap(-1, 4) == 3 && u2::Wrap(4, 4) == 0 && u2::Wrap(9, 4) == 1);
   CHECK(u2::ClampInt(-3, 0, 5) == 0 && u2::ClampInt(7, 0, 5) == 5 && u2::ClampInt(2, 0, 5) == 2);
   CHECK(u2::Length(u2::Normalize(Vec3{0, 0, 0})) == 0);
+}
+
+// A package layout chunk found by its name among a bundle's top-level chunks (u2sdk optmenu, outside races).
+TEST(FngChunkFindsLayoutByName) {
+  std::vector<uint8_t> b;
+  auto chunk = [&](uint32_t id, const char* name, size_t body) {
+    const size_t at = b.size();
+    b.resize(at + 8 + body);
+    std::memcpy(&b[at], &id, 4);
+    uint32_t sz = static_cast<uint32_t>(body);
+    std::memcpy(&b[at + 4], &sz, 4);
+    if (name) std::memcpy(&b[at + u2::fngchunk::kNameOffset], name, std::strlen(name) + 1);
+    return at;
+  };
+  chunk(0x80134000, nullptr, 0x40);
+  chunk(0x30203, "UI_Other.fng", 0x60);
+  const size_t at = chunk(0x30203, "UI_PauseOptions.fng", 0x80);
+  chunk(0x30203, "UI_Last.fng", 0x50);
+  size_t off = 0, len = 0;
+  CHECK(u2::fngchunk::Find(b.data(), b.size(), "ui_pauseoptions.FNG", &off, &len));
+  CHECK(off == at);
+  CHECK(len == 0x88);
+  CHECK(!u2::fngchunk::Find(b.data(), b.size(), "UI_PauseOptions", &off, &len));  // the whole name only
+  CHECK(!u2::fngchunk::Find(b.data(), b.size() - 0x20, "UI_Last.fng", &off, &len));  // truncated
 }

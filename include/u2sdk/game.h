@@ -168,9 +168,8 @@ inline void CarAxes(const uint8_t* car, Vec3 out[3]) {
 // Car+0x554 = CarRenderInfo* (0x6317D6), +0x10 min, +0x20 max (0x620ED6..0x620EDA; Unlimiter CarRenderInfo.h:2085),
 // filled once when the render info is built (0x634800) and rebuilt with it when the ride changes: read it every
 // frame. False when there is none or it is empty (verified-in-binary.md "Car model box").
-inline bool CarLocalBox(const uint8_t* car, Vec3* mn, Vec3* mx) {
-  if (!car) return false;
-  auto cri = *reinterpret_cast<const uint8_t* const*>(car + 0x554);
+// The box itself, from a CarRenderInfo (race cars and front-end cars have the same class, ReInit 0x63A69A..0x63A6BC).
+inline bool CriLocalBox(const uint8_t* cri, Vec3* mn, Vec3* mx) {
   if (!cri) return false;
   auto a = reinterpret_cast<const float*>(cri + 0x10), b = reinterpret_cast<const float*>(cri + 0x20);
   for (int i = 0; i < 3; ++i) {
@@ -181,6 +180,30 @@ inline bool CarLocalBox(const uint8_t* car, Vec3* mn, Vec3* mx) {
   *mx = {b[0], b[1], b[2]};
   return true;
 }
+inline bool CarLocalBox(const uint8_t* car, Vec3* mn, Vec3* mx) {
+  return car && CriLocalBox(*reinterpret_cast<const uint8_t* const*>(car + 0x554), mn, mx);
+}
+
+// Front-end cars (the garage platform, car lot, showroom): FrontEndRenderingCar, 0xB80 bytes, in the list 0x8A30F0 (next
+// at +0; the head is its own end: RenderFrontEndCars 0x630E0E..0x630E2C, 0x502FD0). +0x08 CarRenderInfo*, +0x900 view
+// id, +0x910 position, +0x920 body matrix (model to world: row r is model axis r; the floor reflection negates each
+// row's z, 0x630ECB..0x630EF4), +0xB64 visible. RenderFrontEndCars draws one only with a render info and Visible
+// (0x630E40..0x630E57). verified-in-binary.md "FE cars".
+constexpr uintptr_t kFeCarList = 0x8A30F0;
+inline Vec3 FeCarPosition(const uint8_t* car) {
+  auto p = reinterpret_cast<const float*>(car + 0x910);
+  return {p[0], p[1], p[2]};
+}
+inline void FeCarAxes(const uint8_t* car, Vec3 out[3]) {
+  auto m = reinterpret_cast<const float*>(car + 0x920);
+  for (int r = 0; r < 3; ++r) out[r] = {m[r * 4], m[r * 4 + 1], m[r * 4 + 2]};
+}
+inline bool FeCarLocalBox(const uint8_t* car, Vec3* mn, Vec3* mx) {
+  return car && CriLocalBox(*reinterpret_cast<const uint8_t* const*>(car + 0x08), mn, mx);
+}
+// The FE cars drawn in the main view (view id 1) at full size: rows of unit length, so the career mod's scaled-down
+// corner preview (scripts/career/preview.cpp) is left out. In list order.
+int FrontEndCars(uint8_t** out, int max);
 
 template <typename T>
 inline T& Var(uintptr_t a) { return *reinterpret_cast<T*>(a); }

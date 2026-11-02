@@ -28,6 +28,10 @@ struct Callbacks {
   // Optional: a short tip at the bottom of the bar, below the inner panel, in the package's own console "Back" prompt
   // text (BACK_BUTTON; its buffer grows, one line).
   const char* footer = nullptr;
+  // Optional: while the menu is open every other screen takes no input, the way the game turns a screen off when it
+  // pushes another over it (u2::feng::SetControlMask 0, the saved masks back on Close); a screen that comes up
+  // meanwhile too. For a menu over screens of the game's own (the front end, the post-race results).
+  bool modal = false;
 };
 
 // Sidebar layout, in FE canvas units (480 high, origin at the centre; with WidescreenFix the
@@ -52,6 +56,9 @@ enum class FactoryMode { Permanent, WhileOpening };
 bool Install(const Callbacks& cb, const Layout& layout, bool verbose, FactoryMode mode = FactoryMode::Permanent);
 void Uninstall();                                // puts the original factory back (Permanent)
 bool IsMenuPackage(const char* name);  // our package while the menu is open
+void SetRowCount(int rows);                      // rows of the next Open (Callbacks::rowCount until then)
+// Open: UI_PauseOptions.fng is in GLOBAL\InGameCommon, loaded only in races. Anywhere else (the front end) its layout is
+// read from that bundle file and registered for as long as the menu is open (the game's own 0x51BD30 / 0x5425A0).
 bool Open();                                     // call from frame code (not inside FE callbacks)
 void Close();                                    // same
 bool IsOpen();

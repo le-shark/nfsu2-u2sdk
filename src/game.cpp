@@ -81,6 +81,20 @@ int ActiveCars(uint8_t** out, int max) {
   return k;
 }
 
+int FrontEndCars(uint8_t** out, int max) {
+  int k = 0;
+  const auto head = reinterpret_cast<uint8_t*>(kFeCarList);
+  for (uint8_t* c = *reinterpret_cast<uint8_t**>(head); c && c != head && k < max; c = *reinterpret_cast<uint8_t**>(c)) {
+    if (!*reinterpret_cast<uint8_t**>(c + 0x08) || !Field(c, 0xB64) || Field(c, 0x900) != 1) continue;
+    Vec3 axes[3];
+    FeCarAxes(c, axes);
+    bool unit = true;
+    for (const Vec3& a : axes) unit &= Length(a) > 0.9f && Length(a) < 1.1f;
+    if (unit) out[k++] = c;
+  }
+  return k;
+}
+
 // The game's own stepped segment test, copied from 0x446970 (a path-blocking check):
 //   0x4469DE  ctor 0x5E0B40 on a 0x314-byte stack query object (thiscall, no args)
 //   per step: 0x446B15  0x5E6FA0(obj, &mid, |b-a|*0.5 + 0.5, 0)   fill polygon cache, ret 0xC

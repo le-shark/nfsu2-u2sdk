@@ -18,6 +18,8 @@ void Print(const char* pkg, uint32_t hash, const char* text) {
   At<void(__cdecl*)(const char*, uint32_t, const char*, ...)>(0x537B80)(pkg, hash, "%s", text);
 }
 
+void SetControlMask(const char* pkg, uint32_t mask) { At<void(__cdecl*)(const char*, uint32_t)>(0x537950)(pkg, mask); }
+
 FEPackage* FirstActivePackage() {
   auto ui = Var<uint8_t*>(addr::pFEng);
   if (!ui) return nullptr;

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "u2sdk/feng.h"
+#include "u2sdk/fngchunk.h"
 #include "u2sdk/game.h"
 #include "u2sdk/log.h"
 #include "u2sdk/mem.h"
@@ -54,6 +55,16 @@ auto FEngSetLastButton = Fn<void(__cdecl*)(const char*, int)>(0x50B8C0);
 // selector 0x5CFBF0 checks). The game does the same for the in-world dyno screen (0x557AEE).
 auto SetMenuKeyboardMap = Fn<void(__cdecl*)(char)>(0x5B7ED0);
 using FactoryFn = void*(__cdecl*)(void*);
+// FNG layouts (chunk 0x30203) are kept in the registry 0x8637B0. Lookup by name 0x51BB70 (thiscall, ret 4: the node or 0,
+// and a found node moves to the head, 0x51BC14..0x51BC2F; FindFNGObject 0x51BD10 uses it so). Register 0x51BD30
+// (cdecl(chunk): a node at the tail [0x8637B8], 0x51BCA0) and unregister 0x5425A0 (cdecl(chunk): the node whose chunk it
+// is, 0x51BB30, 0x542530), the pair the bundle loader uses. The career mod registers its own layouts with 0x51BD30
+// ([game] 2026-10-05, calendar_screen.cpp EnsureRegistered). Our FNGData entry (factory slot 0x7F81F4) already exists.
+constexpr uintptr_t kLayoutRegistry = 0x8637B0;
+auto FindLayout = Fn<void*(__fastcall*)(void*, void*, const char*)>(0x51BB70);
+auto RegisterLayout = Fn<int(__cdecl*)(void*)>(0x51BD30);
+auto UnregisterLayout = Fn<int(__cdecl*)(void*)>(0x5425A0);
+constexpr const char* kLayoutBundle = "GLOBAL\\InGameCommon.bun";  // the race loads its own copy from InGameCommon.lzc
 
 // ---- state ----------------------------------------------------------------------------------
 Callbacks g_cb{};
@@ -106,6 +117,17 @@ bool g_inputBlocked = false;  // SetInputBlocked
 bool g_gameInput = false;  // SetGameInput: the keyboard map saved at Open is back while the menu stays loaded
 uint32_t g_savedPortMask;  // our package's pkg+0x24 while hidden or input-blocked
 std::string g_title, g_status;
+// Modal (Callbacks::modal): every other active package whose input we turned off, with its four masks as they were.
+struct Masked {
+  u2::feng::FEPackage* pkg;
+  std::string name;
+  uint32_t masks[4];
+};
+std::vector<Masked> g_masked;
+// Our copy of UI_PauseOptions' layout outside races: the file's bytes, and the registered copy (the registry keeps a
+// pointer to it, so it lives as long as it is registered; a fresh copy for each registration).
+std::vector<uint8_t> g_layoutFile, g_layoutChunk;
+bool g_layoutOurs = false;
 
 void* g_menuVtbl[5];
 void* g_toggleVtbl[17];
@@ -626,6 +648,99 @@ void* __cdecl Factory(void* showData) {
 
 bool IsMenuPackage(const char* name) { return g_open && name && _stricmp(name, kPkg) == 0; }
 
+void SetRowCount(int rows) {
+  if (!g_open) g_cb.rowCount = rows;
+}
+
+namespace {
+bool LoadLayoutFile() {
+  if (!g_layoutFile.empty()) return true;
+  char exe[MAX_PATH];
+  DWORD n = GetModuleFileNameA(nullptr, exe, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return false;
+  std::string path(exe, n);
+  path = path.substr(0, path.find_last_of("\\/") + 1) + kLayoutBundle;
+  HANDLE f = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+  if (f == INVALID_HANDLE_VALUE) {
+    U2LOG("menu: %s not readable (error %lu); no menu outside races", path.c_str(), GetLastError());
+    return false;
+  }
+  std::vector<uint8_t> data(GetFileSize(f, nullptr));
+  DWORD got = 0;
+  const bool ok = !data.empty() && ReadFile(f, data.data(), static_cast<DWORD>(data.size()), &got, nullptr) &&
+                  got == data.size();
+  CloseHandle(f);
+  size_t off = 0, len = 0;
+  if (!ok || !fngchunk::Find(data.data(), data.size(), kPkg, &off, &len)) {
+    U2LOG("menu: no %s layout in %s; no menu outside races", kPkg, path.c_str());
+    return false;
+  }
+  g_layoutFile.assign(data.begin() + off, data.begin() + off + len);
+  U2LOG("menu: %s layout read from %s (offset 0x%zX, %zu bytes)", kPkg, path.c_str(), off, len);
+  return true;
+}
+
+// In a race the bundle has registered the layout; anywhere else we do, until Close.
+bool EnsureLayout() {
+  if (FindLayout(reinterpret_cast<void*>(kLayoutRegistry), nullptr, kPkg)) return true;
+  if (!LoadLayoutFile()) return false;
+  g_layoutChunk = g_layoutFile;
+  g_layoutOurs = RegisterLayout(g_layoutChunk.data()) != 0;
+  U2LOG("menu: %s layout %s", kPkg, g_layoutOurs ? "registered" : "REJECTED");
+  return g_layoutOurs;
+}
+
+void ReleaseLayout() {
+  if (!g_layoutOurs) return;
+  UnregisterLayout(g_layoutChunk.data());
+  g_layoutOurs = false;
+  U2LOG("menu: %s layout unregistered", kPkg);
+}
+
+bool IsActivePackage(u2::feng::FEPackage* p) {
+  for (auto q = u2::feng::FirstActivePackage(); q; q = u2::feng::NextPackage(q))
+    if (q == p) return true;
+  return false;
+}
+
+// Every other active package's input off, with the game's own setter. A package the game gives input again while we are
+// open keeps that as the value to give back (it is what the game wants once we close).
+void MaskOthers() {
+  for (auto p = u2::feng::FirstActivePackage(); p; p = u2::feng::NextPackage(p)) {
+    const char* name = u2::feng::PackageName(p);
+    if (!name || _stricmp(name, kPkg) == 0) continue;
+    uint32_t* m = u2::feng::PackageMasks(p);
+    Masked* e = nullptr;
+    for (auto& k : g_masked)
+      if (k.pkg == p) e = &k;
+    if (!(m[0] | m[1] | m[2] | m[3])) {  // off already: by us, or the game's own choice, given back as it is
+      if (!e) g_masked.push_back({p, name, {0, 0, 0, 0}});
+      continue;
+    }
+    if (!e) {
+      g_masked.push_back({p, name, {}});
+      e = &g_masked.back();
+    }
+    std::memcpy(e->masks, m, sizeof e->masks);
+    u2::feng::SetControlMask(name, 0);
+    if (g_verbose) U2LOG("menu: input off for %s (mask %X)", name, e->masks[0]);
+  }
+}
+
+// Back as they were, for the packages still up. The setter writes one value into all four fields; a package whose
+// fields differed gets the other three back as they were.
+void UnmaskOthers() {
+  for (const auto& e : g_masked) {
+    if (!IsActivePackage(e.pkg) || _stricmp(u2::feng::PackageName(e.pkg), e.name.c_str()) != 0) continue;
+    u2::feng::SetControlMask(e.name.c_str(), e.masks[0]);
+    uint32_t* m = u2::feng::PackageMasks(e.pkg);
+    for (int i = 1; i < 4; ++i) m[i] = e.masks[i];
+  }
+  if (g_verbose && !g_masked.empty()) U2LOG("menu: input back for %zu packages", g_masked.size());
+  g_masked.clear();
+}
+}  // namespace
+
 bool Install(const Callbacks& cb, const Layout& layout, bool verbose, FactoryMode mode) {
   g_cb = cb;
   g_layout = layout;
@@ -663,6 +778,7 @@ bool Open() {
     U2LOG("menu: %s already loaded, not opening", kPkg);
     return false;
   }
+  if (!EnsureLayout()) return false;
   g_menu = nullptr;
   g_pendingActivate = -1;
   g_pendingBack = false;
@@ -683,6 +799,7 @@ bool Open() {
     U2LOG("menu: factory was not called for %s", kPkg);
     RemoveFngAndJoyHandlers(kPkg);
     if (g_joyHandlersWereOn) AddJoyHandlers(Var<void*>(u2::addr::pFEng), nullptr);
+    ReleaseLayout();
     return false;
   }
   g_savedKeyboardMap = Var<uint8_t>(kMenuKeyboardMap);
@@ -695,6 +812,7 @@ bool Open() {
   Var<uint8_t>(kPauseKeyBlock) = 1;
   g_inputLogIn = g_verbose ? 10 : 0;
   g_open = true;
+  if (g_cb.modal) MaskOthers();
   U2LOG("menu: opened");
   return true;
 }
@@ -750,6 +868,8 @@ void Close() {
   // The joy handlers are global, not per package: if another screen needs them (registered
   // before us, or a pause screen that came up meanwhile), register them again.
   if (g_joyHandlersWereOn || u2::IsGamePaused()) AddJoyHandlers(Var<void*>(u2::addr::pFEng), nullptr);
+  UnmaskOthers();  // the screens under ours get their input back once ours is gone, as when a game screen closes
+  ReleaseLayout();
   SetMenuKeyboardMap(g_savedKeyboardMap);
   // Restore the pause-key block a few frames later so an Esc still held from closing can't pause.
   SharedPause& sp = Pause();
@@ -776,6 +896,7 @@ void Tick() {
 
 void Update(const std::string& title, const std::string& status) {
   if (!g_open) return;
+  if (g_cb.modal) MaskOthers();  // a screen that came up meanwhile
   if (g_inputLogIn > 0 && --g_inputLogIn == 0) {
     auto pkg = reinterpret_cast<uint8_t*>(u2::feng::FindPackage(kPkg));
     U2LOG("menu input: mapctx=%d menuMap=%d joyHandlers=%d pkg+24=%X", Var<int>(kKeyboardMapCtx),
