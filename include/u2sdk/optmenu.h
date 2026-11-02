@@ -63,6 +63,8 @@ bool IsHidden();
 // package's own fade-out of every row (verified-in-binary.md "PAD_BACK fades the whole UI_PauseOptions screen"), so
 // block input while a key the owner handles itself (photo mode's Esc that cancels a capture) must not reach it.
 void SetInputBlocked(bool blocked);
+// Changes Callbacks::footer, at once if the menu is open. The text must stay valid.
+void SetFooter(const char* footer);
 // The game's own keyboard map (the one in use before Open) while the menu stays loaded, e.g. to drive; false = the
 // menu map again. Hide the menu meanwhile (SetHidden) so it takes no pad input.
 void SetGameInput(bool on);

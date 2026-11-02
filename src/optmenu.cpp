@@ -457,6 +457,13 @@ void ShowFooter(const char* pkg) {
   if (glyph && !(Flags(glyph) & kObjInvisible)) u2::feng::SetInvisible(reinterpret_cast<u2::feng::FEObject*>(glyph));
 }
 
+void SetFooterText(uint8_t* text) {
+  if (*reinterpret_cast<int*>(text + 0x18) == 2) {  // a text object (0x537BBE)
+    FEStringSetString(text, nullptr, g_cb.footer);
+    *reinterpret_cast<uint32_t*>(text + 0x1C) |= 2;
+  }
+}
+
 void PlaceFooter(const char* pkg, float x, float y) {
   uint8_t* nig = Obj(pkg, "NON_INTERACTIVE_GROUP ");
   uint8_t* group = Obj(pkg, "UI_COMMON_BACK");
@@ -465,10 +472,7 @@ void PlaceFooter(const char* pkg, float x, float y) {
   *reinterpret_cast<uint32_t*>(text + 0x6C) &= ~4u;  // no word wrap
   float gx = Pos(nig)[0] + Pos(group)[0], gy = Pos(nig)[1] + Pos(group)[1];
   SetGeometry(text, x - gx, y - gy, Size(text)[0], Size(text)[1]);
-  if (*reinterpret_cast<int*>(text + 0x18) == 2) {  // a text object (0x537BBE)
-    FEStringSetString(text, nullptr, g_cb.footer);
-    *reinterpret_cast<uint32_t*>(text + 0x1C) |= 2;
-  }
+  SetFooterText(text);
   ShowFooter(pkg);
 }
 
@@ -720,6 +724,12 @@ void SetHidden(bool hidden) {
 
 void SetInputBlocked(bool blocked) {
   if (g_open && blocked != g_inputBlocked) SetPortMask(g_hidden, blocked);
+}
+
+void SetFooter(const char* footer) {
+  g_cb.footer = footer;
+  if (!g_open) return;
+  if (uint8_t* text = Obj(kPkg, "BACK_BUTTON")) SetFooterText(text);
 }
 
 bool IsHidden() { return g_open && g_hidden; }

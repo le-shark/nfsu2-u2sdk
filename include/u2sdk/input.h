@@ -29,10 +29,12 @@ class Input {
 
   bool KeyDown(int vk) const { return vk > 0 && vk < 256 && cur_[vk]; }
   bool KeyPressed(int vk) const { return vk > 0 && vk < 256 && cur_[vk] && !prev_[vk]; }
+  int FirstKeyPressed() const;  // the first key pressed this frame (mouse buttons included), 0 = none
 
   const PadState& Pad() const { return pad_; }
   bool PadDown(uint16_t b) const { return (pad_.buttons & b) != 0; }
   bool PadPressed(uint16_t b) const { return (pad_.buttons & b) && !(prevButtons_ & b); }
+  bool PadAnyPressed() const { return (pad_.buttons & ~prevButtons_) != 0; }
 
   // Relative mouse: when captured, the cursor is re-centred in the game window every frame.
   void SetMouseCapture(bool on);

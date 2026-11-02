@@ -102,6 +102,12 @@ bool WindowPoint(POINT* p, float fx, float fy) {
 }
 }  // namespace
 
+int Input::FirstKeyPressed() const {
+  for (int vk = 1; vk < 256; ++vk)
+    if (cur_[vk] && !prev_[vk]) return vk;
+  return 0;
+}
+
 void Input::Update() {
   std::memcpy(prev_, cur_, sizeof(cur_));
   prevButtons_ = pad_.buttons;
