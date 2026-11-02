@@ -21,6 +21,12 @@ void Print(const char* pkg, uint32_t hash, const char* text);  // FEPrintf 0x537
 // with the player's port mask when it returns (0x4EE1FE). The FE skips a package with port mask 0 for pads and keys
 // (ProcessPadsForPackage 0x54D4BC) and the mouse (0x54E029), and its input messages with control mask 0 (0x55B602).
 void SetControlMask(const char* pkg, uint32_t mask);
+// Every active package's objects drawn anew from their current state next frame: 0x50C7E0 (thiscall pUIData [0x8384C4])
+// walks them with visitor 0x79ABF0, whose 0x537630 sets flag 0x400000 and frees the object's drawn copy (+0x58). The draw
+// 0x5370A0 otherwise reuses that copy unless flag 0x2000000 is set (0x53710B), and FEngine::Update clears the change
+// flags once a frame was rendered (cFEng+0x5250, set at 0x5367B5 by every cFEng::Render). The game calls it when a pad
+// comes or goes (0x56633F) and after the language reload (0x512459).
+void RedrawAll();
 inline uint32_t* PackageMasks(FEPackage* p) { return reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(p) + 0x1C); }
 
 // Active package list: cFEng = *(pUIData+8); head at cFEng+0xE4, next at pkg+0x04.

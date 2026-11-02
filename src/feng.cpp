@@ -20,6 +20,10 @@ void Print(const char* pkg, uint32_t hash, const char* text) {
 
 void SetControlMask(const char* pkg, uint32_t mask) { At<void(__cdecl*)(const char*, uint32_t)>(0x537950)(pkg, mask); }
 
+void RedrawAll() {
+  if (auto ui = Var<void*>(addr::pFEng)) At<void(__fastcall*)(void*, void*)>(0x50C7E0)(ui, nullptr);
+}
+
 FEPackage* FirstActivePackage() {
   auto ui = Var<uint8_t*>(addr::pFEng);
   if (!ui) return nullptr;
