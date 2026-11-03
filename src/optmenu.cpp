@@ -47,6 +47,8 @@ auto FEngPrintf = Fn<void(__cdecl*)(void*, const char*, ...)>(0x537BE0);        
 // ctor's call (0x542C2C, 0x542C7A).
 auto FEngGetSize = Fn<void(__cdecl*)(void*, float*, float*)>(0x51D730);
 auto AddFngToUIObject_1 = Fn<void(__cdecl*)(const char*, void*)>(0x555E80);            // push + AddJoyHandlers
+auto FEngSetScript = Fn<void(__cdecl*)(const char*, uint32_t, const char*, bool)>(0x537C00);  // (pkg, obj, script, reset)
+constexpr uint32_t kEventHandlerHash = 0x47FF4E7C;  // "_EVENT_HANDLER_" (0x4F9912)
 auto RemoveFngAndJoyHandlers = Fn<void(__cdecl*)(const char*)>(0x558F00);              // what the game pairs with it
 // Registers the FE joy handlers unless [0x8384B8] says they already are; thiscall(pUIData), as
 // AddFngToUIObject_1 calls it at 0x555EA2..0x555EA8.
@@ -893,6 +895,12 @@ void Close() {
   SetPortMask(false, false);
   g_gameInput = false;
   FEngSetLastButton(kPkg, 0);
+  // PAD_BACK (Esc, pad B) sets our _EVENT_HANDLER_'s FORWARD script, whose time-0 event 0xAADD0187 goes to every
+  // active package (target 0, 0x542084..0x54212E): UI_Main fades its whole header out with it and never fades it back
+  // ([game] 2026-11-03: Esc out of photo mode on the main menu left only the icons). The removal below runs one
+  // FEngine::Update(0, 0) first (0x558F0C..0x558F10), which would fire it. Our empty BACK script in its place fires
+  // nothing; FEngSetScript as the main menu calls it (0x4F9908..0x4F991D; the career's calendar uses it too).
+  FEngSetScript(kPkg, kEventHandlerHash, "BACK", true);
   RemoveFngAndJoyHandlers(kPkg);
   // The joy handlers are global, not per package: if another screen needs them (registered
   // before us, or a pause screen that came up meanwhile), register them again.
