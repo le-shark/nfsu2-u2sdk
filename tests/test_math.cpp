@@ -1,8 +1,10 @@
 #include "test.h"
 #include "u2sdk/fngchunk.h"
+#include "u2sdk/jdlz.h"
 #include "u2sdk/u2math.h"
 
 #include <cstring>
+#include <string>
 
 using namespace u2;
 
@@ -176,4 +178,41 @@ TEST(FngChunkFindsLayoutByName) {
   CHECK(len == 0x88);
   CHECK(!u2::fngchunk::Find(b.data(), b.size(), "UI_PauseOptions", &off, &len));  // the whole name only
   CHECK(!u2::fngchunk::Find(b.data(), b.size() - 0x20, "UI_Last.fng", &off, &len));  // truncated
+}
+
+// JDLZ (u2sdk jdlz.h, the .lzc bundles): hand-made streams for both match forms, and damaged ones refused.
+namespace {
+std::vector<uint8_t> JdlzStream(uint32_t usize, std::vector<uint8_t> body) {
+  std::vector<uint8_t> s = {'J', 'D', 'L', 'Z', 2, 0x10, 0, 0};
+  const uint32_t csize = static_cast<uint32_t>(16 + body.size());
+  s.resize(16);
+  std::memcpy(&s[8], &usize, 4);
+  std::memcpy(&s[12], &csize, 4);
+  s.insert(s.end(), body.begin(), body.end());
+  return s;
+}
+}  // namespace
+
+TEST(JdlzDecodesShortAndLongMatches) {
+  std::vector<uint8_t> out;
+  // Literals A B C, then a short match (flag2 bit 1): length 3 + 3, distance 2 + 1.
+  auto a = JdlzStream(9, {0x08, 0x01, 'A', 'B', 'C', 0x02, 0x03});
+  CHECK(u2::jdlz::Decompress(a.data(), a.size(), &out));
+  CHECK(std::string(out.begin(), out.end()) == "ABCABCABC");
+  // 17 literals over three flag1 bytes, then a long match (flag2 bit 0): length 0 + 3, distance 0 + 17.
+  std::vector<uint8_t> body = {0x00, 0x00};
+  for (char c = 'a'; c <= 'h'; ++c) body.push_back(c);
+  body.push_back(0x00);
+  for (char c = 'i'; c <= 'p'; ++c) body.push_back(c);
+  body.insert(body.end(), {0x02, 'q', 0x00, 0x00});
+  auto b = JdlzStream(20, body);
+  CHECK(u2::jdlz::Decompress(b.data(), b.size(), &out));
+  CHECK(std::string(out.begin(), out.end()) == "abcdefghijklmnopqabc");
+  // A match reaching before the start, a stream shorter than its size, and no JDLZ header.
+  auto c = JdlzStream(9, {0x01, 0x01, 0x02, 0x03});
+  CHECK(!u2::jdlz::Decompress(c.data(), c.size(), &out));
+  auto d = JdlzStream(12, {0x08, 0x01, 'A', 'B', 'C', 0x02, 0x03});
+  CHECK(!u2::jdlz::Decompress(d.data(), d.size(), &out));
+  a[0] = 'X';
+  CHECK(!u2::jdlz::Decompress(a.data(), a.size(), &out));
 }

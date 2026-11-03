@@ -10,6 +10,7 @@
 
 #include "u2sdk/feng.h"
 #include "u2sdk/fngchunk.h"
+#include "u2sdk/jdlz.h"
 #include "u2sdk/game.h"
 #include "u2sdk/log.h"
 #include "u2sdk/mem.h"
@@ -21,6 +22,7 @@ using u2::Var;
 // ---- game functions (see docs/kb/native-screen.md for the evidence behind each) -------------
 constexpr const char* kPkg = "UI_PauseOptions.fng";
 constexpr uintptr_t kFactorySlot = 0x7F81F4;      // FNGData[UI_PauseOptions.fng].create, orig 0x4EB650
+constexpr uintptr_t kHelpMaskSlot = 0x7F81FC;     // FNGData[UI_PauseOptions.fng] help bar mask, 0x10400
 constexpr uintptr_t kPauseKeyBlock = 0x861E78;    // Career+0x7138: JOY_EVENT_PAUSE handler ignores pause when set
 constexpr uintptr_t kMenuKeyboardMap = 0x870754;  // byte written by 0x5B7ED0 (fe-input.md)
 constexpr uintptr_t kJoyHandlersOn = 0x8384B8;    // set by AddJoyHandlers 0x52CDD0, cleared by 0x50C680
@@ -64,7 +66,10 @@ constexpr uintptr_t kLayoutRegistry = 0x8637B0;
 auto FindLayout = Fn<void*(__fastcall*)(void*, void*, const char*)>(0x51BB70);
 auto RegisterLayout = Fn<int(__cdecl*)(void*)>(0x51BD30);
 auto UnregisterLayout = Fn<int(__cdecl*)(void*)>(0x5425A0);
-constexpr const char* kLayoutBundle = "GLOBAL\\InGameCommon.bun";  // the race loads its own copy from InGameCommon.lzc
+// The game loads GLOBAL\InGameCommon.lzc (0x57DD04 -> loader 0x57CEF0; the .bun name is only copied as a label,
+// 0x57DD25 -> 0x43DC00): JDLZ in a vanilla install (decoded byte-identical to the .bun), raw when a tool rewrote it
+// (the `.net` copy, which has no .bun at all; [game] 2026-11-03). So the .lzc first, the .bun only as a fallback.
+constexpr const char* kLayoutBundles[] = {"GLOBAL\\InGameCommon.lzc", "GLOBAL\\InGameCommon.bun"};
 
 // ---- state ----------------------------------------------------------------------------------
 Callbacks g_cb{};
@@ -653,16 +658,12 @@ void SetRowCount(int rows) {
 }
 
 namespace {
-bool LoadLayoutFile() {
-  if (!g_layoutFile.empty()) return true;
-  char exe[MAX_PATH];
-  DWORD n = GetModuleFileNameA(nullptr, exe, MAX_PATH);
-  if (n == 0 || n >= MAX_PATH) return false;
-  std::string path(exe, n);
-  path = path.substr(0, path.find_last_of("\\/") + 1) + kLayoutBundle;
+// One bundle's UI_PauseOptions layout into g_layoutFile; false (logged) when the file is missing, damaged or has no
+// such layout.
+bool ReadLayoutFrom(const std::string& path) {
   HANDLE f = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
   if (f == INVALID_HANDLE_VALUE) {
-    U2LOG("menu: %s not readable (error %lu); no menu outside races", path.c_str(), GetLastError());
+    U2LOG("menu: %s not readable (error %lu)", path.c_str(), GetLastError());
     return false;
   }
   std::vector<uint8_t> data(GetFileSize(f, nullptr));
@@ -670,14 +671,35 @@ bool LoadLayoutFile() {
   const bool ok = !data.empty() && ReadFile(f, data.data(), static_cast<DWORD>(data.size()), &got, nullptr) &&
                   got == data.size();
   CloseHandle(f);
+  if (ok && jdlz::IsJdlz(data.data(), data.size())) {
+    std::vector<uint8_t> plain;
+    if (!jdlz::Decompress(data.data(), data.size(), &plain)) {
+      U2LOG("menu: %s: JDLZ data damaged", path.c_str());
+      return false;
+    }
+    data.swap(plain);
+  }
   size_t off = 0, len = 0;
   if (!ok || !fngchunk::Find(data.data(), data.size(), kPkg, &off, &len)) {
-    U2LOG("menu: no %s layout in %s; no menu outside races", kPkg, path.c_str());
+    U2LOG("menu: no %s layout in %s", kPkg, path.c_str());
     return false;
   }
   g_layoutFile.assign(data.begin() + off, data.begin() + off + len);
   U2LOG("menu: %s layout read from %s (offset 0x%zX, %zu bytes)", kPkg, path.c_str(), off, len);
   return true;
+}
+
+bool LoadLayoutFile() {
+  if (!g_layoutFile.empty()) return true;
+  char exe[MAX_PATH];
+  DWORD n = GetModuleFileNameA(nullptr, exe, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return false;
+  std::string dir(exe, n);
+  dir = dir.substr(0, dir.find_last_of("\\/") + 1);
+  for (const char* b : kLayoutBundles)
+    if (ReadLayoutFrom(dir + b)) return true;
+  U2LOG("menu: no %s layout found; no menu outside races", kPkg);
+  return false;
 }
 
 // In a race the bundle has registered the layout; anywhere else we do, until Close.
@@ -784,6 +806,12 @@ bool Open() {
   g_pendingBack = false;
   g_joyHandlersWereOn = Var<int>(kJoyHandlersOn) != 0;
   g_wantOurs = true;
+  // The screen's FNGObject::ctor syncs the PC help bar to its FNGData help mask (0x551F43..0x551F67 -> SyncByMask
+  // 0x54E6E0; UI_PauseOptions' is 0x10400, Back only), and removing a package syncs nothing back, so the screen under
+  // ours kept a Back-only bar after we closed ([game] 2026-11-03, main menu, crib, car lot). With the mask borrowed as
+  // 0 for this synchronous push the ctor skips the sync (0x551F46) and the bar stays as its screen set it.
+  const uint32_t helpMask = Var<uint32_t>(kHelpMaskSlot);
+  u2::mem::Write<uint32_t>(kHelpMaskSlot, 0);
   if (g_mode == FactoryMode::WhileOpening) {
     // Borrow the slot for this one synchronous push (the factory runs inside it, [game] 2026-10-02)
     // and chain to whatever was there for any other construction.
@@ -794,6 +822,7 @@ bool Open() {
   } else {
     AddFngToUIObject_1(kPkg, nullptr);  // runs our factory synchronously
   }
+  u2::mem::Write<uint32_t>(kHelpMaskSlot, helpMask);
   g_wantOurs = false;
   if (!g_menu) {
     U2LOG("menu: factory was not called for %s", kPkg);
