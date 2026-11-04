@@ -341,6 +341,25 @@ void UpdateScrollbar(void* self) {
   ScrollBar_Update(Scroller(self), nullptr, 1, g_rowCount, cur ? RowId(cur) + 1 : 1);
 }
 
+// PAD_BACK's package response is (2, PAD_BACK) to the screen, then (1, 0x0C407210) to our _EVENT_HANDLER_, which
+// answers with (0x301, FORWARD), skipped when FORWARD is already its script (0x52CB43..0x52CB59), and (0, FORWARD).
+// FORWARD's time-0 event 0xAADD0187 goes to every active package (target 0, 0x542084..0x54212E): UI_Main fades its
+// header out with it and never back ([game] 2026-11-03 / 2026-11-04: Esc out of photo mode on the main menu). The
+// screen gets PAD_BACK first (FIFO queue, append 0x51AA20, pop 0x5422D1), so FORWARD is made current here with its
+// time at 1: the response then skips it, and the script tick fires only events in [old, new) (0x534CB0, 0x534CF0), so
+// the time-0 events never fire. The script: obj+0x54, id +0x30, time +0x10 (tick 0x54CE93..0x54CEA5).
+// Vanilla popups never broadcast FORWARD either (DateEntryFNGObject 0x55E220..0x55E266: UNDIM + a message to the parent).
+void MuteForwardScript() {
+  auto obj = reinterpret_cast<uint8_t*>(u2::feng::FindObject(kPkg, kEventHandlerHash));
+  if (!obj) return;
+  FEngSetScript(kPkg, kEventHandlerHash, "FORWARD", true);
+  auto script = *reinterpret_cast<uint8_t**>(obj + 0x54);
+  if (script && *reinterpret_cast<uint32_t*>(script + 0x30) == u2::feng::HashUpper("FORWARD"))
+    *reinterpret_cast<int*>(script + 0x10) = 1;
+  else
+    U2LOG("menu: FORWARD script not current after setting it (%p)", script);
+}
+
 // Screen message handler: base UIWidgetMenu first (navigation, LEFT/RIGHT -> row Act, tick).
 void __fastcall MenuNotify(void* self, void*, unsigned msg, void* obj, int p1, int p2) {
   if (!(Scrolls() && (msg == kMsgUp || msg == kMsgDown) && ScrollMove(self, msg)))
@@ -350,6 +369,7 @@ void __fastcall MenuNotify(void* self, void*, unsigned msg, void* obj, int p1, i
     void* cur = *reinterpret_cast<void**>(static_cast<uint8_t*>(self) + 0x54);
     if (cur) g_pendingActivate = RowId(cur);
   } else if (msg == kMsgBack) {
+    MuteForwardScript();
     g_pendingBack = true;  // never tear down from inside the FE update
   }
 }
@@ -895,11 +915,9 @@ void Close() {
   SetPortMask(false, false);
   g_gameInput = false;
   FEngSetLastButton(kPkg, 0);
-  // PAD_BACK (Esc, pad B) sets our _EVENT_HANDLER_'s FORWARD script, whose time-0 event 0xAADD0187 goes to every
-  // active package (target 0, 0x542084..0x54212E): UI_Main fades its whole header out with it and never fades it back
-  // ([game] 2026-11-03: Esc out of photo mode on the main menu left only the icons). The removal below runs one
-  // FEngine::Update(0, 0) first (0x558F0C..0x558F10), which would fire it. Our empty BACK script in its place fires
-  // nothing; FEngSetScript as the main menu calls it (0x4F9908..0x4F991D; the career's calendar uses it too).
+  // Our empty BACK script in place of FORWARD (MuteForwardScript), so nothing of it is left running; FEngSetScript as
+  // the main menu calls it (0x4F9908..0x4F991D). This alone did not keep UI_Main's header ([game] 2026-11-04): the
+  // event fires in the FE update of the Back frame, before Close.
   FEngSetScript(kPkg, kEventHandlerHash, "BACK", true);
   RemoveFngAndJoyHandlers(kPkg);
   // The joy handlers are global, not per package: if another screen needs them (registered
